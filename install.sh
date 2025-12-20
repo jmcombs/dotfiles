@@ -208,18 +208,6 @@ echo "Installing applications from Brewfile..."
 cd "$DOTFILES_DIR"
 brew bundle
 
-# Initialize 1Password CLI plugin if op is installed
-if command -v op >/dev/null 2>&1; then
-  echo "Initializing 1Password CLI plugin..."
-  mkdir -p "$HOME/.config/op"
-  if ! [ -f "$HOME/.config/op/plugins.sh" ]; then
-    op plugin init zsh
-    echo "1Password CLI plugin initialized"
-  else
-    echo "1Password CLI plugin already initialized"
-  fi
-fi
-
 # ====================
 # Configure Git User Settings
 # ====================
@@ -296,9 +284,12 @@ echo ""
 echo "=== Setup complete! ==="
 echo "• Open a new terminal or run: exec zsh"
 echo "• Backups of previous configs are in: $BACKUP_DIR"
-echo "• Remaining manual installations:"
-echo "   - Mac App Store: Caffeinated, Wipr 2, Yoink"
-echo "   - Direct downloads: DDPM, Cisco Accessory Hub, Webex, Microsoft Office/Teams"
+echo ""
+echo "Optional post-install steps:"
+echo "• 1Password CLI: Run 'op plugin init <plugin>' for shell integrations"
+echo "  Available plugins: gh, aws, glab, stripe, etc. (see 'op plugin list')"
+echo "• Mac App Store: Caffeinated, Wipr 2, Yoink"
+echo "• Direct downloads: DDPM, Cisco Accessory Hub, Webex, Microsoft Office/Teams"
 echo "• A reboot is recommended (required for Logitech Options+ and some drivers)"
 echo ""
 echo "Your macOS environment is now fully configured and portable. Enjoy!"
