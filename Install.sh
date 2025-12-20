@@ -46,6 +46,51 @@ echo ""
 mkdir -p "$BACKUP_DIR"
 
 # ====================
+# Configure Git User Settings
+# ====================
+echo "Configuring Git user settings..."
+echo ""
+
+# Prompt for git user.name
+if [ -z "$(git config --global user.name || true)" ]; then
+  read -p "Git user.name (for commits): " git_name
+  if [ -n "$git_name" ]; then
+    git config --global user.name "$git_name"
+    echo "Set git user.name to '$git_name'"
+  fi
+else
+  echo "Git user.name already set: $(git config --global user.name)"
+fi
+
+# Prompt for git user.email
+if [ -z "$(git config --global user.email || true)" ]; then
+  read -p "Git user.email (for commits): " git_email
+  if [ -n "$git_email" ]; then
+    git config --global user.email "$git_email"
+    echo "Set git user.email to '$git_email'"
+  fi
+else
+  echo "Git user.email already set: $(git config --global user.email)"
+fi
+
+# Prompt for git user.signingkey (SSH public key)
+if [ -z "$(git config --global user.signingkey || true)" ]; then
+  echo ""
+  echo "Git commit signing with SSH key (optional):"
+  read -p "Enter your SSH public key for signing (or leave blank to skip): " git_signingkey
+  if [ -n "$git_signingkey" ]; then
+    git config --global user.signingkey "$git_signingkey"
+    git config --global gpg.format ssh
+    git config --global commit.gpgsign true
+    echo "Commit signing enabled with SSH key"
+  fi
+else
+  echo "Git commit signing already configured"
+fi
+
+echo ""
+
+# ====================
 # Helper function: Create symlink with backup of existing files
 # ====================
 link_file() {
@@ -103,6 +148,51 @@ brew update
 echo "Installing applications from Brewfile..."
 cd "$DOTFILES_DIR"
 brew bundle --no-lock  # Prevent creation of a lockfile
+
+# ====================
+# Configure Git User Settings
+# ====================
+echo "Configuring Git user settings..."
+echo ""
+
+# Prompt for git user.name
+if [ -z "$(git config --global user.name || true)" ]; then
+  read -p "Git user.name (for commits): " git_name
+  if [ -n "$git_name" ]; then
+    git config --global user.name "$git_name"
+    echo "Set git user.name to '$git_name'"
+  fi
+else
+  echo "Git user.name already set: $(git config --global user.name)"
+fi
+
+# Prompt for git user.email
+if [ -z "$(git config --global user.email || true)" ]; then
+  read -p "Git user.email (for commits): " git_email
+  if [ -n "$git_email" ]; then
+    git config --global user.email "$git_email"
+    echo "Set git user.email to '$git_email'"
+  fi
+else
+  echo "Git user.email already set: $(git config --global user.email)"
+fi
+
+# Prompt for git user.signingkey (SSH public key)
+if [ -z "$(git config --global user.signingkey || true)" ]; then
+  echo ""
+  echo "Git commit signing with SSH key (optional):"
+  read -p "Enter your SSH public key for signing (or leave blank to skip): " git_signingkey
+  if [ -n "$git_signingkey" ]; then
+    git config --global user.signingkey "$git_signingkey"
+    git config --global gpg.format ssh
+    git config --global commit.gpgsign true
+    echo "Commit signing enabled with SSH key"
+  fi
+else
+  echo "Git commit signing already configured"
+fi
+
+echo ""
 
 # ====================
 # Configure Git Large File Storage (LFS)

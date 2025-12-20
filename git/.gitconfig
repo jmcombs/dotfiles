@@ -1,11 +1,3 @@
-[user]
-	email = jmcombs@me.com
-	name = Jeremy Combs
-	signingkey = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHVpyuPPM2Z7cxCq2+NH21e+epSxiVi0oAmAJtXciAxY
-[gpg]
-	format = ssh
-[commit]
-	gpgsign = true
 [filter "lfs"]
 	clean = git-lfs clean -- %f
 	smudge = git-lfs smudge -- %f
