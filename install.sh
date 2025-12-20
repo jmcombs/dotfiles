@@ -138,7 +138,7 @@ fi
 # Homebrew: Install if not present
 # ====================
 echo "Checking Homebrew installation..."
-if command -v brew >/dev/null 2>&1 && [ -x "/opt/homebrew/bin/brew" ]; then
+if [ -x "/opt/homebrew/bin/brew" ]; then
   echo "Homebrew already installed."
 else
   echo "Installing Homebrew..."
@@ -162,7 +162,7 @@ brew update
 
 echo "Installing applications from Brewfile..."
 cd "$DOTFILES_DIR"
-brew bundle --no-lock  # Prevent creation of a lockfile
+brew bundle
 
 # ====================
 # Configure Git User Settings
