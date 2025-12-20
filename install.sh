@@ -173,30 +173,59 @@ echo "Configuring Git user settings..."
 echo ""
 
 # Prompt for git user.name
-if [ -z "$(git config --global user.name || true)" ]; then
+current_name=$(git config --global user.name || true)
+if [ -n "$current_name" ]; then
+  echo "Git user.name is set to: $current_name"
+  read -p "Change it? (y/N): " change_name
+  if [[ "$change_name" =~ ^[Yy]$ ]]; then
+    read -p "Enter new Git user.name: " git_name
+    if [ -n "$git_name" ]; then
+      git config --global user.name "$git_name"
+      echo "Updated git user.name to '$git_name'"
+    fi
+  fi
+else
   read -p "Git user.name (for commits): " git_name
   if [ -n "$git_name" ]; then
     git config --global user.name "$git_name"
     echo "Set git user.name to '$git_name'"
   fi
-else
-  echo "Git user.name already set: $(git config --global user.name)"
 fi
 
 # Prompt for git user.email
-if [ -z "$(git config --global user.email || true)" ]; then
+current_email=$(git config --global user.email || true)
+if [ -n "$current_email" ]; then
+  echo "Git user.email is set to: $current_email"
+  read -p "Change it? (y/N): " change_email
+  if [[ "$change_email" =~ ^[Yy]$ ]]; then
+    read -p "Enter new Git user.email: " git_email
+    if [ -n "$git_email" ]; then
+      git config --global user.email "$git_email"
+      echo "Updated git user.email to '$git_email'"
+    fi
+  fi
+else
   read -p "Git user.email (for commits): " git_email
   if [ -n "$git_email" ]; then
     git config --global user.email "$git_email"
     echo "Set git user.email to '$git_email'"
   fi
-else
-  echo "Git user.email already set: $(git config --global user.email)"
 fi
 
 # Prompt for git user.signingkey (SSH public key)
-if [ -z "$(git config --global user.signingkey || true)" ]; then
-  echo ""
+current_signingkey=$(git config --global user.signingkey || true)
+echo ""
+if [ -n "$current_signingkey" ]; then
+  echo "Git commit signing is already configured"
+  read -p "Change the signing key? (y/N): " change_signingkey
+  if [[ "$change_signingkey" =~ ^[Yy]$ ]]; then
+    read -p "Enter your new SSH public key for signing (or leave blank to skip): " git_signingkey
+    if [ -n "$git_signingkey" ]; then
+      git config --global user.signingkey "$git_signingkey"
+      echo "Updated git signing key"
+    fi
+  fi
+else
   echo "Git commit signing with SSH key (optional):"
   read -p "Enter your SSH public key for signing (or leave blank to skip): " git_signingkey
   if [ -n "$git_signingkey" ]; then
@@ -205,8 +234,6 @@ if [ -z "$(git config --global user.signingkey || true)" ]; then
     git config --global commit.gpgsign true
     echo "Commit signing enabled with SSH key"
   fi
-else
-  echo "Git commit signing already configured"
 fi
 
 echo ""
