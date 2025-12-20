@@ -167,7 +167,33 @@ cd "$DOTFILES_DIR"
 brew bundle
 
 # ====================
-# Configure Git User Settings
+# Configure Git Large File Storage (LFS)
+# ====================
+echo "Configuring Git LFS..."
+git lfs install
+
+# ====================
+# Create symlinks for managed configuration files
+# ====================
+echo "Creating symlinks..."
+
+link_file "$DOTFILES_DIR/zsh/.zprofile"     "$HOME/.zprofile"
+link_file "$DOTFILES_DIR/zsh/.zshrc"       "$HOME/.zshrc"
+link_file "$DOTFILES_DIR/git/.gitconfig"   "$HOME/.gitconfig"
+
+# Install custom oh-my-posh theme into Homebrew's theme directory
+echo "Installing custom oh-my-posh theme..."
+link_file "$DOTFILES_DIR/posh/jmcombs_p10k_latte.omp.json" "$POSH_THEMES_DIR/jmcombs_p10k_latte.omp.json"
+
+# Set up Ghostty configuration in the standard XDG location
+echo "Setting up Ghostty configuration..."
+mkdir -p "$GHOSTTY_CONFIG_DIR"
+link_file "$DOTFILES_DIR/ghostty/config" "$GHOSTTY_CONFIG_DIR/config"
+
+echo ""
+
+# ====================
+# Configure Git User Settings (after .gitconfig is symlinked)
 # ====================
 echo "Configuring Git user settings..."
 echo ""
@@ -237,30 +263,6 @@ else
 fi
 
 echo ""
-
-# ====================
-# Configure Git Large File Storage (LFS)
-# ====================
-echo "Configuring Git LFS..."
-git lfs install
-
-# ====================
-# Create symlinks for managed configuration files
-# ====================
-echo "Creating symlinks..."
-
-link_file "$DOTFILES_DIR/zsh/.zprofile"     "$HOME/.zprofile"
-link_file "$DOTFILES_DIR/zsh/.zshrc"       "$HOME/.zshrc"
-link_file "$DOTFILES_DIR/git/.gitconfig"   "$HOME/.gitconfig"
-
-# Install custom oh-my-posh theme into Homebrew's theme directory
-echo "Installing custom oh-my-posh theme..."
-link_file "$DOTFILES_DIR/posh/jmcombs_p10k_latte.omp.json" "$POSH_THEMES_DIR/jmcombs_p10k_latte.omp.json"
-
-# Set up Ghostty configuration in the standard XDG location
-echo "Setting up Ghostty configuration..."
-mkdir -p "$GHOSTTY_CONFIG_DIR"
-link_file "$DOTFILES_DIR/ghostty/config" "$GHOSTTY_CONFIG_DIR/config"
 
 # ====================
 # Installation complete
