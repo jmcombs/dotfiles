@@ -125,6 +125,28 @@ link_file() {
 }
 
 # ====================
+# Helper function: Install Oh My Zsh plugins
+# ====================
+install_omz_plugin() {
+  local plugin_name="$1"
+  local plugin_repo="$2"
+  local ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+  
+  # Skip if it's a built-in plugin
+  if [ -d "$HOME/.oh-my-zsh/plugins/$plugin_name" ]; then
+    return 0
+  fi
+  
+  # Install custom plugin if not already present
+  if [ ! -d "$ZSH_CUSTOM/plugins/$plugin_name" ]; then
+    echo "Installing $plugin_name..."
+    git clone "$plugin_repo" "$ZSH_CUSTOM/plugins/$plugin_name"
+  else
+    echo "$plugin_name already installed"
+  fi
+}
+
+# ====================
 # Install Oh My Zsh
 # ====================
 echo "Installing Oh My Zsh..."
@@ -132,6 +154,28 @@ if [ ! -d "$HOME/.oh-my-zsh" ]; then
   sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 else
   echo "Oh My Zsh already installed."
+fi
+
+# Install Oh My Zsh plugins from .zshrc
+echo "Installing Oh My Zsh plugins..."
+if [ -f "$DOTFILES_DIR/zsh/.zshrc" ]; then
+  # Extract plugin names from the plugins=(...) array in .zshrc
+  plugins=$(grep -A 10 '^plugins=(' "$DOTFILES_DIR/zsh/.zshrc" | sed -n '/^plugins=(/,/^)/p' | grep -v '^plugins=\|^)' | tr -d ' ')
+  
+  for plugin in $plugins; do
+    case "$plugin" in
+      zsh-autosuggestions)
+        install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions"
+        ;;
+      zsh-syntax-highlighting)
+        install_omz_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting"
+        ;;
+      # Add more custom plugins here as needed
+      *)
+        # Skip built-in plugins (git, etc.)
+        ;;
+    esac
+  done
 fi
 
 # ====================
@@ -163,6 +207,18 @@ brew update
 echo "Installing applications from Brewfile..."
 cd "$DOTFILES_DIR"
 brew bundle
+
+# Initialize 1Password CLI plugin if op is installed
+if command -v op >/dev/null 2>&1; then
+  echo "Initializing 1Password CLI plugin..."
+  mkdir -p "$HOME/.config/op"
+  if ! [ -f "$HOME/.config/op/plugins.sh" ]; then
+    op plugin init zsh
+    echo "1Password CLI plugin initialized"
+  else
+    echo "1Password CLI plugin already initialized"
+  fi
+fi
 
 # ====================
 # Configure Git User Settings

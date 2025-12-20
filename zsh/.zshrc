@@ -36,7 +36,9 @@ autoload -Uz compinit
 compinit
 
 # 1Password CLI (op) completions
-source $HOME/.config/op/plugins.sh
+if [ -f "$HOME/.config/op/plugins.sh" ]; then
+  source $HOME/.config/op/plugins.sh
+fi
 
 # ====================
 # Prompt: Oh My Posh with jmcombs p10k Latte theme
@@ -44,8 +46,8 @@ source $HOME/.config/op/plugins.sh
 # Set theme path to Homebrew's theme directory
 export POSH_THEMES_PATH="/opt/homebrew/opt/oh-my-posh/themes"
 
-# Load custom theme by name (symlinked in install.sh)
-eval "$(oh-my-posh init zsh --config jmcombs_p10k_latte)"
+# Load custom theme by full path
+eval "$(oh-my-posh init zsh --config $POSH_THEMES_PATH/jmcombs_p10k_latte.omp.json)"
 
 # ====================
 # System info on startup (neofetch)
