@@ -28,7 +28,7 @@ echo ""
 # ====================
 # Ensure Xcode Command Line Tools are installed
 # ====================
-# Skip this check if we're re-executing after cloning (set by self-bootstrap below)
+# Skip Xcode CLI check when installer re-executes itself (controlled by DOTFILES_INSTALLING)
 if [ "$DOTFILES_INSTALLING" != "true" ]; then
   echo "Checking for Xcode Command Line Tools..."
   if ! xcode-select -p &> /dev/null; then
@@ -224,10 +224,10 @@ EOF
   fi
 else
   echo "~/.gitconfig.local already exists"
-  # Show current effective settings (reads included local file via git config)
-  current_name=$(git config --global user.name || true)
-  current_email=$(git config --global user.email || true)
-  current_signingkey=$(git config --global user.signingkey || true)
+  # Read current settings from ~/.gitconfig.local for portability across environments
+  current_name=$(git config -f "$HOME/.gitconfig.local" user.name 2>/dev/null || true)
+  current_email=$(git config -f "$HOME/.gitconfig.local" user.email 2>/dev/null || true)
+  current_signingkey=$(git config -f "$HOME/.gitconfig.local" user.signingkey 2>/dev/null || true)
   echo "Current Git settings:"
   echo "  Name:  ${current_name:-<not set>}"
   echo "  Email: ${current_email:-<not set>}"
