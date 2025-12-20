@@ -206,8 +206,8 @@ if [ ! -f "$HOME/.gitconfig.local" ]; then
   
   cat > "$HOME/.gitconfig.local" << EOF
 [user]
-	name = $git_name
-	email = $git_email
+    name = $git_name
+    email = $git_email
 EOF
 
   echo "Git user.name set to: $git_name"
@@ -218,7 +218,7 @@ EOF
   read -p "Enter your SSH public key for signing (or leave blank to skip): " git_signingkey
   if [ -n "$git_signingkey" ]; then
     cat >> "$HOME/.gitconfig.local" << EOF
-	signingkey = $git_signingkey
+    signingkey = $git_signingkey
 EOF
     echo "Commit signing enabled with SSH key"
   fi
@@ -245,11 +245,11 @@ else
 
     # Rewrite ~/.gitconfig.local with updated values
     {
-      echo "[user]"
-      echo "\tname = $git_name"
-      echo "\temail = $git_email"
+      printf "[user]\n"
+      printf "    name = %s\n" "$git_name"
+      printf "    email = %s\n" "$git_email"
       if [ -n "$git_signingkey" ]; then
-        echo "\tsigningkey = $git_signingkey"
+        printf "    signingkey = %s\n" "$git_signingkey"
       fi
     } > "$HOME/.gitconfig.local"
 
