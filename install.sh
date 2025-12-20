@@ -217,6 +217,16 @@ else
   echo "Terminal profile not found at: $PROFILE_FILE"
 fi
 
+# Set Terminal profile font and size
+echo "Setting Terminal profile font (MesloLGS NF Regular, size 14)..."
+osascript <<OSA
+tell application "Terminal"
+  set targetSettings to settings set "GitHub Light"
+  set font name of targetSettings to "MesloLGS NF Regular"
+  set font size of targetSettings to 14
+end tell
+OSA
+
 echo ""
 
 # ====================
