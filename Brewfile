@@ -34,7 +34,7 @@ cask "1password-cli"                # Command-line interface for 1Password
 cask "dropbox"                      # File syncing and cloud storage
 
 # Development & Containers
-cask "docker"                       # Docker Desktop for container management
+cask "docker-desktop"               # Docker Desktop for container management
 cask "lm-studio"                    # Run local large language models
 cask "visual-studio-code"           # Code editor with extensive extension ecosystem
 
