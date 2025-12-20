@@ -26,6 +26,21 @@ echo "Backup directory:  $BACKUP_DIR"
 echo ""
 
 # ====================
+# Ensure Xcode Command Line Tools are installed
+# ====================
+echo "Checking for Xcode Command Line Tools..."
+if ! xcode-select -p &> /dev/null; then
+  echo "Xcode Command Line Tools not found. Installing..."
+  xcode-select --install
+  echo "Please complete the installation dialog and run this script again."
+  exit 1
+else
+  echo "Xcode Command Line Tools are installed."
+fi
+
+echo ""
+
+# ====================
 # Self-bootstrap: Clone repository if not running from local copy
 # ====================
 # This allows the script to be run directly via curl | bash
