@@ -224,7 +224,39 @@ EOF
   fi
 else
   echo "~/.gitconfig.local already exists"
-  echo "To modify git settings, edit: ~/.gitconfig.local"
+  # Show current effective settings (reads included local file via git config)
+  current_name=$(git config --global user.name || true)
+  current_email=$(git config --global user.email || true)
+  current_signingkey=$(git config --global user.signingkey || true)
+  echo "Current Git settings:"
+  echo "  Name:  ${current_name:-<not set>}"
+  echo "  Email: ${current_email:-<not set>}"
+  if [ -n "$current_signingkey" ]; then
+    echo "  Signing key: $current_signingkey"
+  else
+    echo "  Signing key: <none>"
+  fi
+
+  read -p "Change all three fields now? (y/N): " change_all
+  if [[ "$change_all" =~ ^[Yy]$ ]]; then
+    read -p "New Git user.name: " git_name
+    read -p "New Git user.email: " git_email
+    read -p "New SSH public signing key (or leave blank): " git_signingkey
+
+    # Rewrite ~/.gitconfig.local with updated values
+    {
+      echo "[user]"
+      echo "\tname = $git_name"
+      echo "\temail = $git_email"
+      if [ -n "$git_signingkey" ]; then
+        echo "\tsigningkey = $git_signingkey"
+      fi
+    } > "$HOME/.gitconfig.local"
+
+    echo "Updated ~/.gitconfig.local"
+  else
+    echo "No changes made. Edit ~/.gitconfig.local to update later."
+  fi
 fi
 
 echo ""
