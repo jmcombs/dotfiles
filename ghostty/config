@@ -1,0 +1,38 @@
+# Theme: Built-in Catppuccin Latte (soft pastel light - great for eye comfort)
+theme = Catppuccin Latte
+
+# ====================
+# Font
+# ====================
+font-family = MesloLGS NF Regular
+font-size = 14
+font-thicken = true
+
+# ====================
+# Colors (grouped together)
+# ====================
+# Personal color overrides (these take priority over the theme)
+cursor-color = 3f3f3f
+selection-background = a9c1e2
+selection-foreground = 24292f
+
+# Match ls directory color to prompt path background
+palette = 4=#3465a4
+
+# ====================
+# Window
+# ====================
+# Window padding (eye-friendly)
+window-padding-x = 10
+window-padding-y = 10
+window-padding-balance = true
+
+# Window size
+window-width = 140
+window-height = 40
+
+# ====================
+# macOS-specific
+# ====================
+macos-titlebar-style = tabs
+macos-option-as-alt = true

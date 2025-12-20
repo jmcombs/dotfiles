@@ -1,0 +1,8 @@
+# jmcombs/dotfiles
+
+Personal macOS configuration – apps, shell, Ghostty, oh-my-posh theme.
+
+## One-Command Setup on a Fresh Mac
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/jmcombs/dotfiles/main/remote-bootstrap.sh)"
