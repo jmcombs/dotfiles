@@ -17,6 +17,7 @@ brew "git-lfs"                      # Git extension for versioning large files
 
 # Shell & Terminal
 brew "oh-my-posh"                   # Prompt theme engine for shells
+brew "gnu-stow"                     # Dotfiles symlink manager
 cask "font-meslo-lg-nerd-font"      # Patched Meslo LG font with developer glyphs
 cask "ghostty"                      # Fast, feature-rich GPU-accelerated terminal emulator
 

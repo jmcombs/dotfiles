@@ -64,25 +64,6 @@ echo ""
 mkdir -p "$BACKUP_DIR"
 
 # ====================
-# Helper function: Create symlink with backup of existing files
-# ====================
-link_file() {
-  local src="$1"
-  local dst="$2"
-
-  if [ -e "$dst" ] && [ ! -L "$dst" ]; then
-    echo "Backing up existing $dst → $BACKUP_DIR/"
-    mv "$dst" "$BACKUP_DIR/"
-  elif [ -L "$dst" ]; then
-    echo "Removing old symlink $dst"
-    rm "$dst"
-  fi
-
-  echo "Symlinking $src → $dst"
-  ln -sf "$src" "$dst"
-}
-
-# ====================
 # Helper function: Install Oh My Zsh plugins
 # ====================
 install_omz_plugin() {
@@ -173,59 +154,15 @@ echo "Configuring Git LFS..."
 git lfs install
 
 # ====================
-# Create symlinks for managed configuration files
+# Deploy dotfiles using GNU Stow
 # ====================
-echo "Creating symlinks..."
+echo "Deploying dotfiles with GNU stow..."
+cd "$DOTFILES_DIR"
+stow zsh git ghostty
+cd -
 
-link_file "$DOTFILES_DIR/zsh/.zprofile"     "$HOME/.zprofile"
-link_file "$DOTFILES_DIR/zsh/.zshrc"       "$HOME/.zshrc"
-link_file "$DOTFILES_DIR/git/.gitconfig"   "$HOME/.gitconfig"
-
-# Install custom oh-my-posh theme into Homebrew's theme directory
 echo "Installing custom oh-my-posh theme..."
-link_file "$DOTFILES_DIR/posh/jmcombs_p10k_latte.omp.json" "$POSH_THEMES_DIR/jmcombs_p10k_latte.omp.json"
-
-# Set up Ghostty configuration in the standard XDG location
-echo "Setting up Ghostty configuration..."
-mkdir -p "$GHOSTTY_CONFIG_DIR"
-link_file "$DOTFILES_DIR/ghostty/config" "$GHOSTTY_CONFIG_DIR/config"
-
-echo ""
-
-# ====================
-# Configure macOS Terminal profile (Github Light)
-# ====================
-PROFILE_FILE="$DOTFILES_DIR/terminal/GitHub Light.terminal"
-echo "Configuring macOS Terminal profile..."
-if [ -f "$PROFILE_FILE" ]; then
-  # Read current default profile; if not Github, import and set
-  current_default=$(defaults read com.apple.Terminal "Default Window Settings" 2>/dev/null || echo "")
-  if [ "$current_default" != "GitHub Light" ]; then
-    echo "Importing GitHub Light Terminal profile and setting as default..."
-    # Import the .terminal profile into Terminal (adds it to Profiles)
-    open "$PROFILE_FILE"
-    # Give macOS a moment to register the profile
-    sleep 1
-    # Set as default and startup profile
-    defaults write com.apple.Terminal "Default Window Settings" -string "GitHub Light"
-    defaults write com.apple.Terminal "Startup Window Settings" -string "GitHub Light"
-    echo "macOS Terminal default profile set to: GitHub Light"
-  else
-    echo "macOS Terminal default profile already set to GitHub Light."
-  fi
-else
-  echo "Terminal profile not found at: $PROFILE_FILE"
-fi
-
-# Set Terminal profile font and size
-echo "Setting Terminal profile font (MesloLGS NF Regular, size 14)..."
-osascript <<OSA
-tell application "Terminal"
-  set targetSettings to settings set "GitHub Light"
-  set font name of targetSettings to "MesloLGS NF Regular"
-  set font size of targetSettings to 14
-end tell
-OSA
+cp "$DOTFILES_DIR/posh/jmcombs_p10k_latte.omp.json" "$POSH_THEMES_DIR/jmcombs_p10k_latte.omp.json"
 
 echo ""
 
