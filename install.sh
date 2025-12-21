@@ -14,9 +14,6 @@ REPO_URL="https://github.com/jmcombs/dotfiles.git"
 # Backup directory for existing configuration files (timestamped)
 BACKUP_DIR="$HOME/.dotfiles-backup-$(date +%Y%m%d-%H%M%S)"
 
-# Homebrew location for oh-my-posh themes (Apple Silicon Macs)
-POSH_THEMES_DIR="/opt/homebrew/opt/oh-my-posh/themes"
-
 # Ghostty configuration directory (XDG-compliant location)
 GHOSTTY_CONFIG_DIR="$HOME/.config/ghostty"
 
@@ -160,9 +157,6 @@ echo "Deploying dotfiles with GNU stow..."
 cd "$DOTFILES_DIR"
 stow zsh git ghostty
 cd -
-
-echo "Installing custom oh-my-posh theme..."
-cp "$DOTFILES_DIR/posh/jmcombs_p10k_latte.omp.json" "$POSH_THEMES_DIR/jmcombs_p10k_latte.omp.json"
 
 echo ""
 

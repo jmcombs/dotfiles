@@ -43,11 +43,8 @@ fi
 # ====================
 # Prompt: Oh My Posh with jmcombs p10k Latte theme
 # ====================
-# Set theme path to Homebrew's theme directory
-export POSH_THEMES_PATH="/opt/homebrew/opt/oh-my-posh/themes"
-
-# Load custom theme by full path
-eval "$(oh-my-posh init zsh --config $POSH_THEMES_PATH/jmcombs_p10k_latte.omp.json)"
+# Load custom theme directly from dotfiles
+eval "$(oh-my-posh init zsh --config $HOME/.dotfiles/posh/jmcombs_p10k_latte.omp.json)"
 
 # ====================
 # System info on startup (neofetch)
