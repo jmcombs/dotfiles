@@ -17,6 +17,14 @@ BACKUP_DIR="$HOME/.dotfiles-backup-$(date +%Y%m%d-%H%M%S)"
 # Ghostty configuration directory (XDG-compliant location)
 GHOSTTY_CONFIG_DIR="$HOME/.config/ghostty"
 
+# Blue PSL 10K theme repository (external)
+BLUE_PSL_REPO_URL="https://github.com/jmcombs/blue-psl-10k.git"
+BLUE_PSL_CACHE_DIR="$DOTFILES_DIR/.cache/blue-psl-10k"
+
+# Theme target directories for external themes
+OH_MY_POSH_THEMES_DIR="$HOME/.config/oh-my-posh/themes"
+GHOSTTY_THEMES_DIR="$GHOSTTY_CONFIG_DIR/themes"
+
 echo "=== jmcombs/dotfiles Installer ==="
 echo "Dotfiles location: $DOTFILES_DIR"
 echo "Backup directory:  $BACKUP_DIR"
@@ -157,6 +165,43 @@ echo "Deploying dotfiles with GNU stow..."
 cd "$DOTFILES_DIR"
 stow zsh git ghostty
 cd -
+
+echo ""
+
+# ====================
+# Blue PSL 10K Theme Setup
+# ====================
+echo "Setting up Blue PSL 10K themes..."
+
+# Ensure config and theme directories exist
+mkdir -p "$GHOSTTY_CONFIG_DIR"
+mkdir -p "$GHOSTTY_THEMES_DIR"
+mkdir -p "$OH_MY_POSH_THEMES_DIR"
+
+# Clone or update the Blue PSL 10K repository
+if [ -d "$BLUE_PSL_CACHE_DIR/.git" ]; then
+  echo "Updating Blue PSL 10K theme repository..."
+  git -C "$BLUE_PSL_CACHE_DIR" pull --ff-only
+else
+  echo "Cloning Blue PSL 10K theme repository..."
+  rm -rf "$BLUE_PSL_CACHE_DIR"
+  mkdir -p "$(dirname "$BLUE_PSL_CACHE_DIR")"
+  git clone "$BLUE_PSL_REPO_URL" "$BLUE_PSL_CACHE_DIR"
+fi
+
+# Copy Oh-My-Posh theme
+if [ -f "$BLUE_PSL_CACHE_DIR/posh/blue-psl-10k.omp.json" ]; then
+  cp "$BLUE_PSL_CACHE_DIR/posh/blue-psl-10k.omp.json" "$OH_MY_POSH_THEMES_DIR/"
+else
+  echo "Warning: blue-psl-10k.omp.json not found in Blue PSL 10K repo; skipping Oh-My-Posh theme copy."
+fi
+
+# Copy Ghostty theme
+if [ -f "$BLUE_PSL_CACHE_DIR/ghostty/blue-psl-10k" ]; then
+  cp "$BLUE_PSL_CACHE_DIR/ghostty/blue-psl-10k" "$GHOSTTY_THEMES_DIR/"
+else
+  echo "Warning: Ghostty theme file 'blue-psl-10k' not found in Blue PSL 10K repo; skipping Ghostty theme copy."
+fi
 
 echo ""
 

@@ -1,0 +1,6 @@
+# Ignore local caches and downloaded theme files
+.cache/
+
+# Local theme files copied into stow-managed config directories
+ghostty/.config/ghostty/themes/
+posh/.config/oh-my-posh/themes/

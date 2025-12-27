@@ -1,5 +1,5 @@
-# Theme: Built-in Catppuccin Latte (soft pastel light - great for eye comfort)
-theme = Catppuccin Latte
+# Theme: Blue PSL 10K (unified with VS Code and Oh-My-Posh)
+theme = blue-psl-10k
 
 # ====================
 # Font
@@ -11,13 +11,7 @@ font-thicken = true
 # ====================
 # Colors (grouped together)
 # ====================
-# Personal color overrides (these take priority over the theme)
-cursor-color = 3f3f3f
-selection-background = a9c1e2
-selection-foreground = 24292f
-
-# Match ls directory color to prompt path background
-palette = 4=#3465a4
+# All color customizations are provided by the Blue PSL 10K theme file.
 
 # ====================
 # Window

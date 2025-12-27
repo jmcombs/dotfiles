@@ -7,3 +7,7 @@ Personal macOS configuration – apps, shell, Ghostty, oh-my-posh theme.
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/jmcombs/dotfiles/main/install.sh)"
 ```
+
+## Future Enhancements
+
+- [ ] macOS Terminal profile integration with Blue PSL 10K - to be implemented later

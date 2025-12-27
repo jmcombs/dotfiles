@@ -41,10 +41,9 @@ if [ -f "$HOME/.config/op/plugins.sh" ]; then
 fi
 
 # ====================
-# Prompt: Oh My Posh with jmcombs p10k Latte theme
+# Prompt: Oh My Posh with Blue PSL 10K theme
 # ====================
-# Load custom theme directly from dotfiles
-eval "$(oh-my-posh init zsh --config $HOME/.dotfiles/posh/jmcombs_p10k_latte.omp.json)"
+eval "$(oh-my-posh init zsh --config ~/.config/oh-my-posh/themes/blue-psl-10k.omp.json)"
 
 # ====================
 # System info on startup (neofetch)

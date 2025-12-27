@@ -11,6 +11,7 @@ brew "tree"                         # Display directories as trees
 # Developer CLI Tools
 brew "act"                          # Run GitHub Actions locally
 brew "container-structure-test"     # Test utility for validating container structure
+brew "hadolint"                     # Dockerfile linter
 brew "devcontainer"                 # CLI for Visual Studio Code Dev Containers
 brew "gh"                           # GitHub CLI for managing issues, PRs, and repos
 brew "git-lfs"                      # Git extension for versioning large files
