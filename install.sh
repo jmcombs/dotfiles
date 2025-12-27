@@ -69,8 +69,21 @@ echo ""
 mkdir -p "$BACKUP_DIR"
 
 # ====================
-# Helper function: Install Oh My Zsh plugins
+# Helper functions
 # ====================
+
+# Back up and remove an existing config file if it is not already a symlink
+backup_config() {
+  local path="$1"
+  if [ -e "$path" ] && [ ! -L "$path" ]; then
+    local name
+    name="$(basename "$path")"
+    echo "Backing up existing $name to $BACKUP_DIR"
+    mv "$path" "$BACKUP_DIR/"
+  fi
+}
+
+# Install Oh My Zsh plugins
 install_omz_plugin() {
   local plugin_name="$1"
   local plugin_repo="$2"
@@ -163,6 +176,12 @@ git lfs install
 # ====================
 echo "Deploying dotfiles with GNU stow..."
 cd "$DOTFILES_DIR"
+
+# Back up any existing config files that would conflict with stow-managed symlinks
+backup_config "$HOME/.zshrc"
+backup_config "$HOME/.zprofile"
+backup_config "$HOME/.gitconfig"
+
 stow zsh git ghostty
 cd -
 
