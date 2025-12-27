@@ -172,22 +172,6 @@ echo "Configuring Git LFS..."
 git lfs install
 
 # ====================
-# Deploy dotfiles using GNU Stow
-# ====================
-echo "Deploying dotfiles with GNU stow..."
-cd "$DOTFILES_DIR"
-
-# Back up any existing config files that would conflict with stow-managed symlinks
-backup_config "$HOME/.zshrc"
-backup_config "$HOME/.zprofile"
-backup_config "$HOME/.gitconfig"
-
-stow zsh git ghostty
-cd -
-
-echo ""
-
-# ====================
 # Blue PSL 10K Theme Setup
 # ====================
 echo "Setting up Blue PSL 10K themes..."
@@ -290,6 +274,22 @@ else
     echo "No changes made. Edit ~/.gitconfig.local to update later."
   fi
 fi
+
+echo ""
+
+# ====================
+# Deploy dotfiles using GNU Stow
+# ====================
+echo "Deploying dotfiles with GNU stow..."
+cd "$DOTFILES_DIR"
+
+# Back up any existing config files that would conflict with stow-managed symlinks
+backup_config "$HOME/.zshrc"
+backup_config "$HOME/.zprofile"
+backup_config "$HOME/.gitconfig"
+
+stow zsh git ghostty
+cd -
 
 echo ""
 
