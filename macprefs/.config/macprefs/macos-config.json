@@ -1,0 +1,232 @@
+{
+  "version": "1.0",
+  "os": "26",
+  "description": "Personal migration configuration - curated from actual Mac export on 2026-01-19",
+  "domains": {
+    "com.apple.AppleMultitouchTrackpad": {
+      "Clicking": {
+        "value": true,
+        "note": "Tap to click - enables single-finger tap as a click"
+      },
+      "TrackpadThreeFingerDrag": {
+        "value": true,
+        "note": "Three-finger drag - move windows by dragging with three fingers"
+      },
+      "TrackpadThreeFingerHorizSwipeGesture": {
+        "value": false,
+        "note": "Disabled to avoid conflict with three-finger drag"
+      },
+      "TrackpadThreeFingerTapGesture": {
+        "value": false,
+        "note": "Disabled to avoid conflict with three-finger drag"
+      },
+      "TrackpadThreeFingerVertSwipeGesture": {
+        "value": false,
+        "note": "Disabled to avoid conflict with three-finger drag"
+      },
+      "TrackpadTwoFingerDoubleTapGesture": {
+        "value": true,
+        "note": "Smart zoom - double-tap with two fingers to zoom in"
+      },
+      "TrackpadRightClick": {
+        "value": true,
+        "note": "Two-finger click for right-click/context menu"
+      },
+      "TrackpadPinch": {
+        "value": true,
+        "note": "Pinch to zoom gesture in supported apps"
+      },
+      "TrackpadRotate": {
+        "value": true,
+        "note": "Two-finger rotate gesture for image rotation"
+      },
+      "TrackpadMomentumScroll": {
+        "value": true,
+        "note": "Inertia scrolling - continues briefly after finger lift"
+      }
+    },
+    "com.apple.dock": {
+      "autohide": {
+        "value": true,
+        "note": "Auto-hide dock for more screen space"
+      },
+      "magnification": {
+        "value": true,
+        "note": "Magnify icons on hover for easier targeting"
+      },
+      "largesize": {
+        "value": 128,
+        "note": "Magnified icon size in pixels (16-128)"
+      },
+      "minimize-to-application": {
+        "value": true,
+        "note": "Minimize windows into their app icon, not separate tiles"
+      },
+      "mru-spaces": {
+        "value": false,
+        "note": "Disable auto-rearranging Spaces based on recent use - keeps consistent layout"
+      }
+    },
+    "com.apple.WindowManager": {
+      "GloballyEnabled": {
+        "value": true,
+        "note": "Stage Manager enabled - groups windows by app on side"
+      },
+      "AppWindowGroupingBehavior": {
+        "value": false,
+        "note": "Don't group all windows from same app together"
+      },
+      "HideDesktop": {
+        "value": false,
+        "note": "Keep desktop visible when using Stage Manager"
+      },
+      "StandardHideDesktopIcons": {
+        "value": false,
+        "note": "Show desktop icons in standard (non-Stage Manager) mode"
+      },
+      "StandardHideWidgets": {
+        "value": false,
+        "note": "Show widgets in standard mode"
+      },
+      "EnableTiledWindowMargins": {
+        "value": false,
+        "note": "No gaps between tiled windows - maximize screen usage"
+      },
+      "StageManagerHideWidgets": {
+        "value": false,
+        "note": "Keep widgets visible when Stage Manager is active"
+      }
+    },
+    "com.apple.menuextra.clock": {
+      "ShowSeconds": {
+        "value": true,
+        "note": "Display seconds in menu bar clock"
+      },
+      "ShowAMPM": {
+        "value": true,
+        "note": "Show AM/PM indicator (12-hour format)"
+      },
+      "ShowDayOfWeek": {
+        "value": true,
+        "note": "Display day name (Mon, Tue, etc.) in menu bar"
+      }
+    },
+    "NSGlobalDomain": {
+      "com.apple.mouse.scaling": {
+        "value": 2,
+        "note": "Mouse tracking speed - 2 is medium-fast (range 0-3)"
+      },
+      "com.apple.trackpad.forceClick": {
+        "value": true,
+        "note": "Enable Force Click - press harder for Quick Look, etc."
+      },
+      "AppleEnableMouseSwipeNavigateWithScrolls": {
+        "value": false,
+        "note": "Disable swipe navigation with mouse scroll wheel"
+      },
+      "AppleEnableSwipeNavigateWithScrolls": {
+        "value": false,
+        "note": "Disable swipe navigation (back/forward) in apps"
+      },
+      "AppleMiniaturizeOnDoubleClick": {
+        "value": false,
+        "note": "Don't minimize window when double-clicking title bar"
+      },
+      "com.apple.sound.beep.feedback": {
+        "value": true,
+        "note": "Play feedback sound when adjusting volume"
+      },
+      "com.apple.springing.enabled": {
+        "value": true,
+        "note": "Spring-loading folders - hover to open when dragging"
+      },
+      "com.apple.springing.delay": {
+        "value": 0.5,
+        "note": "Spring-loading delay in seconds before folder opens"
+      },
+      "com.apple.sound.beep.sound": {
+        "value": "/System/Library/Sounds/Sosumi.aiff",
+        "note": "System alert sound - Sosumi instead of default Tink"
+      }
+    },
+    "com.apple.controlcenter": {
+      "NSStatusItem Visible Battery": {
+        "value": false,
+        "note": "Hide battery in menu bar (still visible in Control Center)"
+      },
+      "NSStatusItem Visible Display": {
+        "value": false,
+        "note": "Hide display brightness in menu bar"
+      }
+    },
+    "com.apple.assistant.support": {
+      "Assistant Enabled": {
+        "value": true,
+        "note": "Siri enabled"
+      },
+      "Allow Explicit Content": {
+        "value": true,
+        "note": "Allow explicit content in Siri responses"
+      }
+    },
+    "com.apple.finder": {
+      "FXPreferredViewStyle": {
+        "value": "Nlsv",
+        "note": "Default to List view (Nlsv=List, icnv=Icon, clmv=Column, Flwv=Gallery)"
+      },
+      "FXPreferredGroupBy": {
+        "value": "None",
+        "note": "Group by: None - files listed without grouping"
+      },
+      "ShowStatusBar": {
+        "value": true,
+        "note": "Show status bar at bottom of Finder windows (item count, disk space)"
+      },
+      "ShowPathbar": {
+        "value": true,
+        "note": "Show clickable path bar at bottom of Finder windows"
+      },
+      "ShowRecentTags": {
+        "value": false,
+        "note": "Hide recent tags from Finder sidebar"
+      },
+      "FXDefaultSearchScope": {
+        "value": "SCcf",
+        "note": "Search current folder by default (SCcf=Current Folder, SCsp=Previous Scope, SCev=This Mac)"
+      },
+      "NewWindowTarget": {
+        "value": "PfHm",
+        "note": "New Finder windows open to Home folder (PfHm=Home, PfDe=Desktop, PfDo=Documents, PfCm=Computer)"
+      },
+      "FXICloudDriveDesktop": {
+        "value": true,
+        "note": "Sync Desktop folder to iCloud Drive"
+      },
+      "FXICloudDriveDocuments": {
+        "value": true,
+        "note": "Sync Documents folder to iCloud Drive"
+      },
+      "ShowExternalHardDrivesOnDesktop": {
+        "value": true,
+        "note": "Show external hard drives on Desktop"
+      },
+      "ShowRemovableMediaOnDesktop": {
+        "value": true,
+        "note": "Show CDs, DVDs, and iPods on Desktop"
+      },
+      "ShowHardDrivesOnDesktop": {
+        "value": false,
+        "note": "Hide internal hard drives from Desktop"
+      },
+      "WarnOnEmptyTrash": {
+        "value": true,
+        "note": "Show warning dialog before emptying Trash"
+      },
+      "FXEnableExtensionChangeWarning": {
+        "value": true,
+        "note": "Show warning when changing file extensions"
+      }
+    }
+  }
+}
+

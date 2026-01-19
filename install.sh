@@ -288,8 +288,63 @@ backup_config "$HOME/.zshrc"
 backup_config "$HOME/.zprofile"
 backup_config "$HOME/.gitconfig"
 
-stow zsh git ghostty
+stow zsh git ghostty macprefs
 cd -
+
+echo ""
+
+# ====================
+# Apply macOS System Preferences via macprefs
+# ====================
+MACPREFS_CONFIG="$HOME/.config/macprefs/macos-config.json"
+
+echo "Applying macOS system preferences..."
+if command -v macprefs &> /dev/null; then
+  if [ -f "$MACPREFS_CONFIG" ]; then
+    echo "Running: macprefs apply --config $MACPREFS_CONFIG"
+    echo ""
+    # Interactive mode (no --yes flag) - user reviews and confirms each setting
+    macprefs apply --config "$MACPREFS_CONFIG"
+    MACPREFS_APPLIED=true
+  else
+    echo "Warning: macprefs config not found at $MACPREFS_CONFIG"
+    echo "Skipping macOS system preferences."
+    MACPREFS_APPLIED=false
+  fi
+else
+  echo "Warning: macprefs command not found. Install with: brew install jmcombs/macprefs/macprefs"
+  echo "Skipping macOS system preferences."
+  MACPREFS_APPLIED=false
+fi
+
+echo ""
+
+# ====================
+# Create post-reboot reminder marker
+# ====================
+# This marker file triggers a one-time reminder message on first shell login after reboot
+REMINDER_MARKER="$HOME/.dotfiles-post-install-reminder"
+cat > "$REMINDER_MARKER" << 'REMINDER_EOF'
+================================================================================
+                        POST-INSTALL REMINDER
+================================================================================
+
+Your dotfiles installation is complete! Here are some optional manual steps:
+
+• 1Password CLI: Run 'op plugin init <plugin>' for shell integrations
+  Available plugins: gh, aws, glab, stripe, etc. (see 'op plugin list')
+
+• Mac App Store: Caffeinated, Wipr 2, Yoink
+
+• Direct downloads: DDPM, Cisco Accessory Hub, Webex, Microsoft Office/Teams
+
+• If you skipped macprefs, run manually:
+  macprefs apply --config ~/.config/macprefs/macos-config.json
+
+================================================================================
+This message will only appear once. Enjoy your new Mac!
+================================================================================
+REMINDER_EOF
 
 echo ""
 
@@ -306,6 +361,22 @@ echo "• 1Password CLI: Run 'op plugin init <plugin>' for shell integrations"
 echo "  Available plugins: gh, aws, glab, stripe, etc. (see 'op plugin list')"
 echo "• Mac App Store: Caffeinated, Wipr 2, Yoink"
 echo "• Direct downloads: DDPM, Cisco Accessory Hub, Webex, Microsoft Office/Teams"
-echo "• A reboot is recommended (required for Logitech Options+ and some drivers)"
 echo ""
-echo "Your macOS environment is now fully configured and portable. Enjoy!"
+
+# ====================
+# Reboot prompt
+# ====================
+echo ""
+echo "Some macOS preference changes require a reboot to take effect."
+read -p "Would you like to reboot now? (y/N): " reboot_choice
+if [[ "$reboot_choice" =~ ^[Yy]$ ]]; then
+  echo ""
+  echo "Rebooting in 5 seconds... (Ctrl+C to cancel)"
+  sleep 5
+  sudo shutdown -r now
+else
+  echo ""
+  echo "No reboot scheduled. Remember to reboot later for all changes to take effect."
+  echo ""
+  echo "Your macOS environment is now fully configured and portable. Enjoy!"
+fi

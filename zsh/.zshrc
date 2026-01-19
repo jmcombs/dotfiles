@@ -54,5 +54,16 @@ if [[ -o interactive ]]; then
 fi
 
 # ====================
+# Post-install reminder (one-time display after dotfiles installation)
+# ====================
+DOTFILES_REMINDER="$HOME/.dotfiles-post-install-reminder"
+if [[ -o interactive ]] && [ -f "$DOTFILES_REMINDER" ]; then
+  echo ""
+  cat "$DOTFILES_REMINDER"
+  echo ""
+  rm -f "$DOTFILES_REMINDER"
+fi
+
+# ====================
 # Items automatically added by other tools
 # ====================

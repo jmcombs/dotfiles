@@ -1,5 +1,8 @@
 # Brewfile - macOS development and productivity setup
 
+# Homebrew Taps (third-party repositories)
+tap "jmcombs/macprefs"              # macOS preferences backup and migration tool
+
 # General CLI Utilities
 brew "bat"                          # Cat clone with syntax highlighting and Git integration
 brew "eza"                          # Modern replacement for ls (fork of exa)
@@ -19,6 +22,7 @@ brew "git-lfs"                      # Git extension for versioning large files
 # Shell & Terminal
 brew "oh-my-posh"                   # Prompt theme engine for shells
 brew "stow"                         # Dotfiles symlink manager
+brew "macprefs"                     # macOS preferences backup and migration tool
 cask "font-meslo-lg-nerd-font"      # Patched Meslo LG font with developer glyphs
 cask "ghostty"                      # Fast, feature-rich GPU-accelerated terminal emulator
 
