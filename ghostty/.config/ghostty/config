@@ -4,7 +4,7 @@ theme = blue-psl-10k
 # ====================
 # Font
 # ====================
-font-family = MesloLGS NF Regular
+font-family = MesloLGS Nerd Font Mono
 font-size = 14
 font-thicken = true
 
