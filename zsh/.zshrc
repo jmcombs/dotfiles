@@ -50,18 +50,7 @@ eval "$(oh-my-posh init zsh --config ~/.config/oh-my-posh/themes/blue-psl-10k.om
 # ====================
 # Only run neofetch in interactive shells (normal terminal sessions)
 if [[ -o interactive ]]; then
-    neofetch
-fi
-
-# ====================
-# Post-install reminder (one-time display after dotfiles installation)
-# ====================
-DOTFILES_REMINDER="$HOME/.dotfiles-post-install-reminder"
-if [[ -o interactive ]] && [ -f "$DOTFILES_REMINDER" ]; then
-  echo ""
-  cat "$DOTFILES_REMINDER"
-  echo ""
-  rm -f "$DOTFILES_REMINDER"
+	neofetch
 fi
 
 # ====================

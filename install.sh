@@ -317,66 +317,56 @@ else
   MACPREFS_APPLIED=false
 fi
 
-echo ""
-
-# ====================
-# Create post-reboot reminder marker
-# ====================
-# This marker file triggers a one-time reminder message on first shell login after reboot
-REMINDER_MARKER="$HOME/.dotfiles-post-install-reminder"
-cat > "$REMINDER_MARKER" << 'REMINDER_EOF'
-================================================================================
-                        POST-INSTALL REMINDER
-================================================================================
-
-Your dotfiles installation is complete! Here are some optional manual steps:
-
-• 1Password CLI: Run 'op plugin init <plugin>' for shell integrations
-  Available plugins: gh, aws, glab, stripe, etc. (see 'op plugin list')
-
-• Mac App Store: Caffeinated, Wipr 2, Yoink
-
-• Direct downloads: DDPM, Cisco Accessory Hub, Webex, Microsoft Office/Teams
-
-• If you skipped macprefs, run manually:
-  macprefs apply --config ~/.config/macprefs/macos-config.json
-
-================================================================================
-This message will only appear once. Enjoy your new Mac!
-================================================================================
-REMINDER_EOF
-
-echo ""
-
-# ====================
-# Installation complete
+	echo ""
+	
+	# ====================
+	# Installation complete
 # ====================
 echo ""
 echo "=== Setup complete! ==="
 echo "• Open a new terminal or run: exec zsh"
 echo "• Backups of previous configs are in: $BACKUP_DIR"
 echo ""
-echo "Optional post-install steps:"
-echo "• 1Password CLI: Run 'op plugin init <plugin>' for shell integrations"
-echo "  Available plugins: gh, aws, glab, stripe, etc. (see 'op plugin list')"
-echo "• Mac App Store: Caffeinated, Wipr 2, Yoink"
-echo "• Direct downloads: DDPM, Cisco Accessory Hub, Webex, Microsoft Office/Teams"
-echo ""
 
-# ====================
-# Reboot prompt
-# ====================
-echo ""
-echo "Some macOS preference changes require a reboot to take effect."
-read -p "Would you like to reboot now? (y/N): " reboot_choice
-if [[ "$reboot_choice" =~ ^[Yy]$ ]]; then
-  echo ""
-  echo "Rebooting in 5 seconds... (Ctrl+C to cancel)"
-  sleep 5
-  sudo shutdown -r now
-else
-  echo ""
-  echo "No reboot scheduled. Remember to reboot later for all changes to take effect."
-  echo ""
-  echo "Your macOS environment is now fully configured and portable. Enjoy!"
-fi
+	echo "================================================================================"
+	echo "                        POST-INSTALL REMINDER"
+	echo "================================================================================"
+	echo ""
+	echo "Your dotfiles installation is complete! Here are some optional manual steps:"
+	echo ""
+	echo "• 1Password CLI: Run 'op plugin init <plugin>' for shell integrations"
+	echo "  Available plugins: gh, aws, glab, stripe, etc. (see 'op plugin list')"
+	echo ""
+	echo "• Mac App Store: Caffeinated, Wipr 2, Yoink"
+	echo ""
+	echo "• Direct downloads: DDPM, Cisco Accessory Hub, Webex, Microsoft Office/Teams"
+	echo ""
+	echo "• If you skipped macprefs, run manually:"
+	echo "  macprefs apply --config ~/.config/macprefs/macos-config.json"
+	echo ""
+	echo "================================================================================"
+	echo "This message will only appear once. Enjoy your new Mac!"
+	echo "================================================================================"
+	echo ""
+	
+	# ====================
+	# Reboot prompt
+	# ====================
+	echo ""
+	echo "Some macOS preference changes require a reboot to take effect."
+	read -p "Would you like to reboot now? (y/N): " reboot_choice
+	if [[ "$reboot_choice" =~ ^[Yy]$ ]]; then
+	  echo ""
+	  echo "Reboot scheduled. (Ctrl+C to cancel)"
+	  for seconds in 5 4 3 2 1; do
+	    printf "\rRebooting in %s seconds... (Ctrl+C to cancel)" "$seconds"
+	    sleep 1
+	  done
+	  echo ""
+	  sudo shutdown -r now
+	else
+	  echo ""
+	  echo "No reboot scheduled. Remember to reboot later for all changes to take effect."
+	  echo ""
+	  echo "Your macOS environment is now fully configured and portable. Enjoy!"
+	fi
