@@ -1,11 +1,9 @@
 # Brewfile - macOS development and productivity setup
 
-# Homebrew Taps (third-party repositories)
-tap "jmcombs/macprefs"              # macOS preferences backup and migration tool
-
 # General CLI Utilities
 brew "bat"                          # Cat clone with syntax highlighting and Git integration
 brew "eza"                          # Modern replacement for ls (fork of exa)
+brew "fontconfig"                   # Library for configuring and customizing font access
 brew "gotop"                        # Terminal-based graphical activity monitor
 brew "jq"                           # Command-line JSON processor
 brew "neofetch"                     # System information tool with ASCII art logo
