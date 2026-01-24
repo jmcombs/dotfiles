@@ -31,6 +31,7 @@ cask "istat-menus"                  # Advanced system monitoring in menu bar
 cask "notchnook"                    # Utility for using the MacBook notch area
 cask "snagit"                       # Screen capture and screen recording tool
 cask "soulver"                      # Smart calculator with natural language input
+cask "plaud"                        # AI-powered voice recorder and transcription app
 
 # Security & Storage
 cask "1password"                    # Password manager desktop app
