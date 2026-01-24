@@ -1,5 +1,8 @@
 # Brewfile - macOS development and productivity setup
 
+# Third-party taps
+tap "jmcombs/macprefs"
+
 # General CLI Utilities
 brew "bat"                          # Cat clone with syntax highlighting and Git integration
 brew "eza"                          # Modern replacement for ls (fork of exa)
