@@ -9,7 +9,8 @@ brew "eza"                          # Modern replacement for ls (fork of exa)
 brew "fontconfig"                   # Library for configuring and customizing font access
 brew "gotop"                        # Terminal-based graphical activity monitor
 brew "jq"                           # Command-line JSON processor
-brew "neofetch"                     # System information tool with ASCII art logo
+brew "librsvg"                      # SVG rendering library (provides rsvg-convert)
+brew "fastfetch"                     # System information tool with ASCII art logo
 brew "tree"                         # Display directories as trees
 
 # Developer CLI Tools
