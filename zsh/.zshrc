@@ -46,11 +46,11 @@ fi
 eval "$(oh-my-posh init zsh --config ~/.config/oh-my-posh/themes/blue-psl-10k.omp.json)"
 
 # ====================
-# System info on startup (neofetch)
+# System info on startup (fastfetch)
 # ====================
-# Only run neofetch in interactive shells (normal terminal sessions)
+# Only run fastfetch in interactive shells (normal terminal sessions)
 if [[ -o interactive ]]; then
-	neofetch
+	fastfetch
 fi
 
 # ====================

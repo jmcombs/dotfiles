@@ -127,9 +127,8 @@ if [ -f "$DOTFILES_DIR/zsh/.zshrc" ]; then
       zsh-syntax-highlighting)
         install_omz_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting"
         ;;
-      # Add more custom plugins here as needed
-      *)
-        # Skip built-in plugins (git, etc.)
+      rsvg)
+        install_omz_plugin "rsvg" "https://github.com/jmcombs/omz-plugin-rsvg"
         ;;
     esac
   done
