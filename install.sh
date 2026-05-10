@@ -171,6 +171,55 @@ echo "Configuring Git LFS..."
 git lfs install
 
 # ====================
+# Authenticate with GitHub (session-only — removed after submodule clone)
+# ====================
+echo "Checking GitHub authentication..."
+if ! gh auth status &>/dev/null; then
+  echo "GitHub sign-in required to clone private pi-agents repository."
+  echo "(Session-only — token is removed after cloning.)"
+  gh auth login
+  gh auth setup-git
+  GH_AUTH_TEMP=true
+else
+  echo "GitHub already authenticated."
+  GH_AUTH_TEMP=false
+fi
+echo ""
+
+# ====================
+# Install pi coding agent
+# ====================
+echo "Installing pi coding agent..."
+if command -v pi &>/dev/null; then
+  echo "pi already installed ($(pi --version 2>/dev/null || echo 'version unknown')). Skipping."
+else
+  curl -fsSL https://pi.dev/install.sh | sh
+fi
+echo ""
+
+# ====================
+# Initialize pi-agents submodule
+# ====================
+echo "Initializing pi-agents submodule..."
+if git -C "$DOTFILES_DIR" submodule update --init --recursive; then
+  echo "pi-agents submodule initialized."
+  PI_AGENTS_READY=true
+else
+  echo "Warning: pi-agents submodule initialization failed."
+  echo "  Run manually after authenticating:"
+  echo "    git -C $DOTFILES_DIR submodule update --init --recursive"
+  echo "    stow -d $DOTFILES_DIR -t $HOME pi"
+  PI_AGENTS_READY=false
+fi
+
+# Remove temporary GitHub authentication now that submodule is cloned
+if [ "$GH_AUTH_TEMP" = "true" ]; then
+  gh auth logout --hostname github.com 2>/dev/null || true
+  echo "Temporary GitHub authentication removed."
+fi
+echo ""
+
+# ====================
 # Blue PSL 10K Theme Setup
 # ====================
 echo "Setting up Blue PSL 10K themes..."
@@ -287,7 +336,13 @@ backup_config "$HOME/.zshrc"
 backup_config "$HOME/.zprofile"
 backup_config "$HOME/.gitconfig"
 
-stow zsh git ghostty macprefs
+if [ "$PI_AGENTS_READY" = "true" ]; then
+  backup_config "$HOME/.pi/agent/settings.json"
+  backup_config "$HOME/.pi/agent/models.json"
+  stow zsh git ghostty macprefs pi
+else
+  stow zsh git ghostty macprefs
+fi
 cd -
 
 echo ""
@@ -332,6 +387,17 @@ echo ""
 	echo "================================================================================"
 	echo ""
 	echo "Your dotfiles installation is complete! Here are some optional manual steps:"
+	echo ""
+	echo "• pi: Launch pi once to auto-install all packages (pi-tavily-search,"
+	echo "  pi-prompt-enhancer, blue-psl-10k theme, pi-subagents, pi-intercom)."
+	echo "  No manual pi install commands needed."
+	echo ""
+	echo "• pi-agents (if submodule was skipped): authenticate with GitHub then run:"
+	echo "    git -C ~/.dotfiles submodule update --init --recursive"
+	echo "    stow -d ~/.dotfiles -t ~ pi"
+	echo "  Then launch pi — packages install automatically on first run."
+	echo ""
+	echo "• To sync pi-agents changes going forward: ask pi to 'sync my pi config'"
 	echo ""
 	echo "• 1Password CLI: Run 'op plugin init <plugin>' for shell integrations"
 	echo "  Available plugins: gh, aws, glab, stripe, etc. (see 'op plugin list')"

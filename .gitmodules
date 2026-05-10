@@ -1,0 +1,3 @@
+[submodule "pi/.pi/agent"]
+	path = pi/.pi/agent
+	url = https://github.com/jmcombs/pi-agents.git
