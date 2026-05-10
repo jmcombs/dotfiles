@@ -59,7 +59,7 @@ if [ "$(basename "$(pwd)" 2>/dev/null || echo "")" != ".dotfiles" ] || [ ! -d "$
   cd "$DOTFILES_DIR"
   chmod +x install.sh
   echo "Repository cloned. Re-running installer from local copy..."
-  exec env DOTFILES_INSTALLING=true ./install.sh  # Replace current process with local version
+  exec env DOTFILES_INSTALLING=true ./install.sh </dev/tty  # Replace current process with local version (reconnect stdin to terminal for interactive prompts)
 fi
 
 echo "Running from local repository: $DOTFILES_DIR"
