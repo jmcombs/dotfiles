@@ -200,6 +200,11 @@ echo ""
 # ====================
 # Install Claude Code CLI
 # ====================
+# The native installer places the claude binary in ~/.local/bin.
+# Add it to PATH now so the idempotency check works on re-runs and
+# the binary is available for the remainder of this script session.
+export PATH="$HOME/.local/bin:$PATH"
+
 echo "Installing Claude Code CLI..."
 if command -v claude &>/dev/null; then
   echo "Claude Code CLI already installed ($(claude --version 2>/dev/null || echo 'version unknown')). Skipping."

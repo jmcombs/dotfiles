@@ -1,4 +1,10 @@
 # ====================
+# PATH
+# ====================
+# ~/.local/bin — user-installed binaries (e.g. Claude Code CLI native installer)
+export PATH="$HOME/.local/bin:$PATH"
+
+# ====================
 # Oh My Zsh configuration
 # ====================
 export ZSH="$HOME/.oh-my-zsh"
