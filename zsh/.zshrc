@@ -27,7 +27,7 @@ alias cat='bat'
 alias more='bat'
 
 # Ollama — manual lifecycle control (registered via launchd, never auto-starts)
-alias ollama-start="launchctl kickstart -k gui/$UID/com.ollama"
+alias ollama-start="launchctl kickstart -k gui/\$UID/com.ollama"
 alias ollama-stop="launchctl kill SIGTERM gui/\$UID/com.ollama"
 alias ollama-status="launchctl print gui/\$UID/com.ollama 2>/dev/null | grep -E 'state|pid'"
 
