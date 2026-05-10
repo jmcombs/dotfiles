@@ -51,3 +51,6 @@ cask "brave-browser"                # Privacy-focused web browser
 
 # PDF & Documents
 cask "pdf-expert"                   # Powerful PDF editor and reader
+
+# AI Tools
+cask "claude"                       # Anthropic's unified Claude desktop app (Chat, Cowork, and Code in one)

@@ -198,6 +198,17 @@ fi
 echo ""
 
 # ====================
+# Install Claude Code CLI
+# ====================
+echo "Installing Claude Code CLI..."
+if command -v claude &>/dev/null; then
+  echo "Claude Code CLI already installed ($(claude --version 2>/dev/null || echo 'version unknown')). Skipping."
+else
+  curl -fsSL https://claude.ai/install.sh | bash
+fi
+echo ""
+
+# ====================
 # Initialize pi-agents submodule
 # ====================
 echo "Initializing pi-agents submodule..."
@@ -415,6 +426,10 @@ echo ""
 	echo "  Then launch pi — packages install automatically on first run."
 	echo ""
 	echo "• To sync pi-agents changes going forward: ask pi to 'sync my pi config'"
+	echo ""
+	echo "• Claude Code CLI: Run 'claude' in any project directory to authenticate"
+	echo "  (Requires a Claude Pro/Max subscription or Anthropic Console account)"
+	echo "  The CLI auto-updates in the background. To update manually: claude update"
 	echo ""
 	echo "• 1Password CLI: Run 'op plugin init <plugin>' for shell integrations"
 	echo "  Available plugins: gh, aws, glab, stripe, etc. (see 'op plugin list')"
