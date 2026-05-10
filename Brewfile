@@ -20,6 +20,7 @@ brew "hadolint"                     # Dockerfile linter
 brew "devcontainer"                 # CLI for Visual Studio Code Dev Containers
 brew "gh"                           # GitHub CLI for managing issues, PRs, and repos
 brew "git-lfs"                      # Git extension for versioning large files
+brew "ollama"                       # CLI-only local LLM runtime (no GUI)
 
 # Shell & Terminal
 brew "oh-my-posh"                   # Prompt theme engine for shells
@@ -35,7 +36,6 @@ cask "istat-menus"                  # Advanced system monitoring in menu bar
 cask "notchnook"                    # Utility for using the MacBook notch area
 cask "snagit"                       # Screen capture and screen recording tool
 cask "soulver"                      # Smart calculator with natural language input
-cask "plaud"                        # AI-powered voice recorder and transcription app
 
 # Security & Storage
 cask "1password"                    # Password manager desktop app
@@ -44,7 +44,6 @@ cask "dropbox"                      # File syncing and cloud storage
 
 # Development & Containers
 cask "docker-desktop"               # Docker Desktop for container management
-cask "lm-studio"                    # Run local large language models
 cask "visual-studio-code"           # Code editor with extensive extension ecosystem
 
 # Browsers

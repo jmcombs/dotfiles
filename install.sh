@@ -339,12 +339,24 @@ backup_config "$HOME/.gitconfig"
 if [ "$PI_AGENTS_READY" = "true" ]; then
   backup_config "$HOME/.pi/agent/settings.json"
   backup_config "$HOME/.pi/agent/models.json"
-  stow zsh git ghostty macprefs pi
+  stow zsh git ghostty macprefs pi ollama
 else
-  stow zsh git ghostty macprefs
+  stow zsh git ghostty macprefs ollama
 fi
 cd -
 
+echo ""
+
+# ====================
+# Register ollama launchd agent
+# ====================
+echo "Registering ollama launchd agent..."
+# Unload first if already registered — makes this block idempotent on re-runs
+launchctl unload "$HOME/Library/LaunchAgents/com.ollama.plist" 2>/dev/null || true
+launchctl load "$HOME/Library/LaunchAgents/com.ollama.plist"
+echo "Ollama registered. It will NOT start automatically on login."
+echo "  Start:  launchctl start com.ollama"
+echo "  Stop:   launchctl stop com.ollama"
 echo ""
 
 # ====================
@@ -387,6 +399,11 @@ echo ""
 	echo "================================================================================"
 	echo ""
 	echo "Your dotfiles installation is complete! Here are some optional manual steps:"
+	echo ""
+	echo "• Ollama: start with 'launchctl start com.ollama', stop with 'launchctl stop com.ollama'"
+	echo "  Aliases available: ollama-start | ollama-stop | ollama-status"
+	echo "  Update: brew upgrade ollama"
+	echo "  Logs (while running): tail -f /tmp/ollama.log"
 	echo ""
 	echo "• pi: Launch pi once to auto-install all packages (pi-tavily-search,"
 	echo "  pi-prompt-enhancer, blue-psl-10k theme, pi-subagents, pi-intercom)."
