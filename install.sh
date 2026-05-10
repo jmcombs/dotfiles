@@ -201,8 +201,12 @@ echo ""
 # Install Claude Code CLI
 # ====================
 # The native installer places the claude binary in ~/.local/bin.
-# Add it to PATH now so the idempotency check works on re-runs and
-# the binary is available for the remainder of this script session.
+# Ensure it is on PATH for future shell sessions (safety net in case stow
+# has not run yet and ~/.zshrc is not yet symlinked to the managed file).
+if ! grep -q '\.local/bin' ~/.zshrc 2>/dev/null; then
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+fi
+# Also export for the current script session.
 export PATH="$HOME/.local/bin:$PATH"
 
 echo "Installing Claude Code CLI..."
