@@ -1,0 +1,6 @@
+FROM qwen3.6:35b-a3b-coding-mxfp8
+
+# Qwen Coding Optimized Parameters
+PARAMETER temperature 0.6
+PARAMETER top_p 0.95
+PARAMETER top_k 20

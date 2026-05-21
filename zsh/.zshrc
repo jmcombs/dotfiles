@@ -67,3 +67,8 @@ fi
 # ====================
 # Items automatically added by other tools
 # ====================
+# The following lines have been added by Docker Desktop to enable Docker CLI completions.
+fpath=(/Users/jmcombs/.docker/completions $fpath)
+autoload -Uz compinit
+compinit
+# End of Docker CLI completions
