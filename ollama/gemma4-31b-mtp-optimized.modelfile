@@ -1,0 +1,23 @@
+FROM gemma4:31b-coding-mtp-bf16
+
+# Gemma 4 Official Recommendation - Best overall behavior
+PARAMETER temperature 1.0
+
+# Controls diversity while maintaining coherence
+PARAMETER top_p 0.95
+
+# Unofficial fix for agentic/tool-calling loops (makes model more decisive)
+PARAMETER top_k 20
+
+# Balanced context window for M5 Max — big speed improvement vs 262k
+# (Still excellent for large codebases and long conversations)
+PARAMETER num_ctx 131072
+
+# Larger batch size = faster prompt processing (prefill stage)
+PARAMETER num_batch 512
+
+# Let MLX automatically optimize threading for Apple Silicon
+PARAMETER num_thread 0
+
+# Helps reduce repetitive or hesitant tool calls
+PARAMETER repeat_penalty 1.0

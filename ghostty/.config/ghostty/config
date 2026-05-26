@@ -2,6 +2,11 @@
 theme = blue-psl-10k
 
 # ====================
+# Notifications
+# ====================
+desktop-notifications = true
+
+# ====================
 # Font
 # ====================
 font-family = MesloLGS Nerd Font
@@ -30,3 +35,4 @@ window-height = 40
 # ====================
 macos-titlebar-style = tabs
 macos-option-as-alt = true
+
