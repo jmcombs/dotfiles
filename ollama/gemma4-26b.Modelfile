@@ -1,6 +1,0 @@
-FROM gemma4:26b-mxfp8
-
-# Consistent with Gemma 4 flagship settings for balanced reasoning
-PARAMETER temperature 1.0
-PARAMETER top_p 0.95
-PARAMETER top_k 64
