@@ -20,7 +20,9 @@ brew "hadolint"                     # Dockerfile linter
 brew "devcontainer"                 # CLI for Visual Studio Code Dev Containers
 brew "gh"                           # GitHub CLI for managing issues, PRs, and repos
 brew "git-lfs"                      # Git extension for versioning large files
+brew "neovim"                       # Terminal-based extensible text editor
 brew "ollama"                       # CLI-only local LLM runtime (no GUI)
+brew "tree-sitter-cli"              # CLI tool required by nvim-treesitter v1.0 to compile parsers
 
 # Shell & Terminal
 brew "oh-my-posh"                   # Prompt theme engine for shells

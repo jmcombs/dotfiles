@@ -359,9 +359,9 @@ backup_config "$HOME/.gitconfig"
 if [ "$PI_AGENTS_READY" = "true" ]; then
   backup_config "$HOME/.pi/agent/settings.json"
   backup_config "$HOME/.pi/agent/models.json"
-  stow zsh git ghostty macprefs pi ollama
+  stow zsh git ghostty macprefs nvim pi ollama
 else
-  stow zsh git ghostty macprefs ollama
+  stow zsh git ghostty macprefs nvim ollama
 fi
 cd -
 
