@@ -359,12 +359,28 @@ backup_config "$HOME/.gitconfig"
 if [ "$PI_AGENTS_READY" = "true" ]; then
   backup_config "$HOME/.pi/agent/settings.json"
   backup_config "$HOME/.pi/agent/models.json"
-  stow zsh git ghostty macprefs nvim pi
+  stow zsh git ghostty macprefs nvim llama pi
 else
-  stow zsh git ghostty macprefs nvim
+  stow zsh git ghostty macprefs nvim llama
 fi
 cd -
 
+echo ""
+
+# ====================
+# Register llama.cpp LaunchAgents
+# ====================
+echo "Registering llama.cpp LaunchAgents..."
+for service in qwen gemma qwen32 devstral; do
+  plist="$HOME/Library/LaunchAgents/com.llama.$service.plist"
+  if [ -f "$plist" ]; then
+    launchctl unload "$plist" 2>/dev/null || true
+    launchctl load "$plist"
+    echo "  Registered com.llama.$service (will NOT auto-start at login)"
+  else
+    echo "  Warning: $plist not found — skipping (run after stow)"
+  fi
+done
 echo ""
 
 # ====================
@@ -407,6 +423,10 @@ echo ""
 	echo "================================================================================"
 	echo ""
 	echo "Your dotfiles installation is complete! Here are some optional manual steps:"
+	echo ""
+	echo "• llama.cpp: Manage local model services with llama-start/stop/status."
+	echo "  Models must be downloaded manually to ~/.local/share/llama/models/"
+	echo "  Logs: /tmp/llama-<name>.log  |  Status: llama-status"
 	echo ""
 	echo "• pi: Launch pi once to auto-install all packages (pi-tavily-search,"
 	echo "  pi-prompt-enhancer, blue-psl-10k theme, pi-subagents, pi-intercom)."
