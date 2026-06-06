@@ -1,0 +1,20 @@
+#!/bin/zsh
+
+servers=(
+  "11434:qwen:Qwen3.6-27B"
+  "11435:gemma:Gemma4-31B"
+  "11436:qwen32:Qwen3-32B"
+  "11437:devstral:Devstral-24B"
+)
+
+for entry in $servers; do
+  port="${entry%%:*}"
+  rest="${entry#*:}"
+  alias="${rest%%:*}"
+  name="${rest#*:}"
+  if lsof -i ":$port" -sTCP:LISTEN &>/dev/null 2>&1; then
+    echo "● $alias ($name) — running on :$port"
+  else
+    echo "○ $alias ($name) — stopped"
+  fi
+done

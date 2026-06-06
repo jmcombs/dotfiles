@@ -1,0 +1,14 @@
+#!/bin/zsh
+
+case "$1" in
+  qwen)     log="/tmp/llama-qwen.log"     ;;
+  gemma)    log="/tmp/llama-gemma.log"    ;;
+  qwen32)   log="/tmp/llama-qwen32.log"   ;;
+  devstral) log="/tmp/llama-devstral.log" ;;
+  *)
+    echo "Usage: llama-log <qwen|gemma|qwen32|devstral>"
+    exit 1
+    ;;
+esac
+
+tail -f "$log"

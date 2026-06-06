@@ -1,0 +1,18 @@
+#!/bin/zsh
+set -e
+
+case "$1" in
+  qwen)     label="com.llama.qwen"     ;;
+  gemma)    label="com.llama.gemma"    ;;
+  qwen32)   label="com.llama.qwen32"   ;;
+  devstral) label="com.llama.devstral" ;;
+  *)
+    echo "Usage: llama-stop <qwen|gemma|qwen32|devstral>"
+    exit 1
+    ;;
+esac
+
+plist="$HOME/Library/LaunchAgents/$label.plist"
+launchctl stop "$label" 2>/dev/null || true
+launchctl unload "$plist" 2>/dev/null || true
+echo "Stopped $label"
