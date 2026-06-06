@@ -44,18 +44,3 @@ This section explains why certain packages are included in this environment conf
 - **`macprefs`**: Automates the application of macOS system preferences defined in this repo.
 - **`1password-cli`**: Integrates password management directly into the terminal workflow.
 
----
-
-### How to use these Modelfiles with Pi
-Since the model parameters (temperature, top_p, etc.) are now encapsulated in Ollama `Modelfile`s rather than just being passed via API calls, you must register them locally before they can be used by the Pi Agent.
-
-#### Step 1: Register the models in Ollama
-Run these commands in your terminal to create local versions of the models with optimized parameters:
-```bash
-ollama create gemma4-31b-tuned -f ollama/gemma4-31b.Modelfile
-ollama create gemma4-26b-tuned -f ollama/gemma4-26b.Modelfile
-ollama create qwen3.6-coding-tuned -f ollama/qwen3.6-coding.Modelfile
-```
-
-#### Step 2: Configure Pi to use the tuned models
-Update `pi/.pi/agent/models.json` so that the `id` field of your model entry matches the name you created in Ollama (e.g., change `"gemma4:31b-mxfp8"` to `"gemma4-31b-tuned"`).
