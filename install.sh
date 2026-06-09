@@ -224,6 +224,12 @@ echo "Initializing pi-agents submodule..."
 if git -C "$DOTFILES_DIR" submodule update --init --recursive; then
   echo "pi-agents submodule initialized."
   PI_AGENTS_READY=true
+
+  # Register the settings.json clean filter so lastChangelogVersion (auto-written
+  # by pi on every run) is stripped before staging and never causes a dirty tree.
+  git -C "$DOTFILES_DIR/pi/.pi/agent" config filter.filter_json_keys.clean 'bash scripts/clean-settings-json.sh'
+  git -C "$DOTFILES_DIR/pi/.pi/agent" config filter.filter_json_keys.smudge cat
+  echo "  Registered settings.json clean filter."
 else
   echo "Warning: pi-agents submodule initialization failed."
   echo "  Run manually after authenticating:"
