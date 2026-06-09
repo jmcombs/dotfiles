@@ -17,9 +17,7 @@
     <string>--ctx-size</string>
     <string>131072</string>
     <string>--batch-size</string>
-    <string>2048</string>
-    <string>--ubatch-size</string>
-    <string>2048</string>
+    <string>512</string>
     <string>--flash-attn</string>
     <string>on</string>
     <string>--cache-type-k</string>
