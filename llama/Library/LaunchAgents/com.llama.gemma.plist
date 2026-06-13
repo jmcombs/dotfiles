@@ -18,6 +18,8 @@
     <string>131072</string>
     <string>--batch-size</string>
     <string>512</string>
+    <string>--fit</string>
+    <string>off</string>
     <string>--flash-attn</string>
     <string>on</string>
     <string>--cache-type-k</string>
