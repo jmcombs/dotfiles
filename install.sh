@@ -72,6 +72,20 @@ mkdir -p "$BACKUP_DIR"
 # Helper functions
 # ====================
 
+# Write ~/.config/git/allowed_signers from the given email and SSH public key.
+# The file is not tracked in the dotfiles repo (it contains personal data); this
+# function generates it at install time from the same info collected for .gitconfig.local.
+write_allowed_signers() {
+  local email="$1"
+  local signingkey="$2"
+  if [ -z "$signingkey" ]; then
+    return 0
+  fi
+  mkdir -p "$HOME/.config/git"
+  printf '%s namespaces="git" %s\n' "$email" "$signingkey" > "$HOME/.config/git/allowed_signers"
+  echo "SSH allowed-signers file written to ~/.config/git/allowed_signers"
+}
+
 # Back up and remove an existing config file if it is not already a symlink
 backup_config() {
   local path="$1"
@@ -312,6 +326,7 @@ EOF
 EOF
     echo "Commit signing enabled with SSH key"
   fi
+  write_allowed_signers "$git_email" "$git_signingkey"
 else
   echo "~/.gitconfig.local already exists"
   # Read current settings from ~/.gitconfig.local for portability across environments
@@ -344,8 +359,14 @@ else
     } > "$HOME/.gitconfig.local"
 
     echo "Updated ~/.gitconfig.local"
+    write_allowed_signers "$git_email" "$git_signingkey"
   else
     echo "No changes made. Edit ~/.gitconfig.local to update later."
+    # Create the allowed-signers file if it is absent (e.g. re-running install on an
+    # existing machine that predates this feature, or after a dotfiles re-clone).
+    if [ ! -f "$HOME/.config/git/allowed_signers" ] && [ -n "$current_signingkey" ]; then
+      write_allowed_signers "$current_email" "$current_signingkey"
+    fi
   fi
 fi
 
