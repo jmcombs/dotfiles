@@ -17,7 +17,7 @@
     <string>--ctx-size</string>
     <string>131072</string>
     <string>--batch-size</string>
-    <string>512</string>
+    <string>4096</string>
     <string>--fit</string>
     <string>off</string>
     <string>--flash-attn</string>
