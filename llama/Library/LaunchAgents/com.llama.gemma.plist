@@ -26,6 +26,12 @@
     <string>q8_0</string>
     <string>--cache-type-v</string>
     <string>q8_0</string>
+    <string>--spec-draft-model</string>
+    <string>/Users/jmcombs/.local/share/llama/models/MTP/gemma-4-31B-it-Q8_0-MTP.gguf</string>
+    <string>--spec-type</string>
+    <string>draft-mtp</string>
+    <string>--spec-draft-n-max</string>
+    <string>2</string>
     <string>--parallel</string>
     <string>1</string>
     <string>--host</string>
@@ -33,9 +39,6 @@
     <string>--port</string>
     <string>11435</string>
   </array>
-
-  <!-- MTP spec decoding (--spec-draft-model) requires gemma4-assistant arch support,
-       not yet in llama.cpp b9430. Add when brew upgrade llama.cpp includes PR #23398. -->
 
   <key>RunAtLoad</key>
   <false/>
