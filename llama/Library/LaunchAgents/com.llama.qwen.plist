@@ -30,8 +30,6 @@
     <string>draft-mtp</string>
     <string>--spec-draft-n-max</string>
     <string>2</string>
-    <string>--reasoning-budget</string>
-    <string>2048</string>
     <string>--parallel</string>
     <string>1</string>
     <string>--host</string>
