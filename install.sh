@@ -382,13 +382,15 @@ cd "$DOTFILES_DIR"
 backup_config "$HOME/.zshrc"
 backup_config "$HOME/.zprofile"
 backup_config "$HOME/.gitconfig"
+backup_config "$HOME/.claude/settings.json"
+backup_config "$HOME/.claude/statusline-command.sh"
 
 if [ "$PI_AGENTS_READY" = "true" ]; then
   backup_config "$HOME/.pi/agent/settings.json"
   backup_config "$HOME/.pi/agent/models.json"
-  stow zsh git ghostty macprefs nvim llama pi
+  stow zsh git ghostty macprefs nvim llama pi claude
 else
-  stow zsh git ghostty macprefs nvim llama
+  stow zsh git ghostty macprefs nvim llama claude
 fi
 cd -
 
@@ -468,6 +470,7 @@ echo ""
 	echo ""
 	echo "• Claude Code CLI: Run 'claude' in any project directory to authenticate"
 	echo "  (Requires a Claude Pro/Max subscription or Anthropic Console account)"
+	echo "  Config (settings.json + statusline) is pre-deployed via stow."
 	echo "  The CLI auto-updates in the background. To update manually: claude update"
 	echo ""
 	echo "• 1Password CLI: Run 'op plugin init <plugin>' for shell integrations"
