@@ -26,6 +26,12 @@
     <string>q8_0</string>
     <string>--cache-type-v</string>
     <string>q8_0</string>
+    <string>--temp</string>
+    <string>0.6</string>
+    <string>--top-k</string>
+    <string>20</string>
+    <string>--top-p</string>
+    <string>0.95</string>
     <string>--parallel</string>
     <string>1</string>
     <string>--host</string>
