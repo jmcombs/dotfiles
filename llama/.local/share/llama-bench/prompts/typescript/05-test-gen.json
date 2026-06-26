@@ -1,0 +1,7 @@
+{
+  "id": "05-test-gen",
+  "system": "You are an expert TypeScript developer who writes thorough tests. Use Vitest syntax.",
+  "prompt": "Write Vitest unit tests for this function:\n\n```typescript\nexport function parseQueryString(qs: string): Record<string, string | string[]> {\n  if (!qs || qs === '?') return {};\n  const raw = qs.startsWith('?') ? qs.slice(1) : qs;\n  return raw.split('&').reduce<Record<string, string | string[]>>((acc, pair) => {\n    const [key, val = ''] = pair.split('=').map(decodeURIComponent);\n    if (!key) return acc;\n    const existing = acc[key];\n    if (existing === undefined) {\n      acc[key] = val;\n    } else if (Array.isArray(existing)) {\n      existing.push(val);\n    } else {\n      acc[key] = [existing, val];\n    }\n    return acc;\n  }, {});\n}\n```",
+  "expected_behavior": "Tests should cover: empty/missing input, leading '?', single key-value pair, multiple pairs, duplicate keys producing an array, URL-encoded characters being decoded, keys with no value, and the edge case of '?' alone. Should use describe/it/expect. Should have at least 8 test cases.",
+  "max_tokens": 700
+}

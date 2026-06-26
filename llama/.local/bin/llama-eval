@@ -1,0 +1,1166 @@
+#!/usr/bin/env python3
+# No external dependencies — uses Python stdlib only.
+#
+# Usage:
+#   llama-bench                          run all running models
+#   llama-bench --models qwen            run one model
+#   llama-bench --speed-only             skip quality scoring
+#   llama-bench --runs 3                 average timing over 3 runs
+#   llama-bench compare                  diff last two result files
+#   llama-bench compare a.json b.json    diff specific results
+#   llama-bench soak                     real-world speed: context-depth curve + thermal soak
+#   llama-bench soak --models qwen --soak-min 5
+#   llama-bench soak --no-soak           context-depth curve only (fast)
+#   llama-bench baseline --models qwen   model comparison: HumanEval → accuracy + sustained tok/s
+#   llama-bench baseline --models qwen --limit 70     faster directional comparison
+#   llama-bench baseline --models qwen --tuning       also run speed phase (for llama.cpp tuning)
+
+import argparse
+import json
+import shutil
+import socket
+import statistics
+import subprocess
+import sys
+import time
+import urllib.request
+import urllib.error
+from datetime import datetime
+from pathlib import Path
+
+SHARE_DIR = Path.home() / ".local" / "share" / "llama-bench"
+RESULTS_DIR = Path.home() / ".cache" / "llama-bench" / "results"
+
+MODELS = {
+    "qwen":      {"port": 11434, "alias": "qwen3.6-27b-coding-optimized",   "label": "Qwen3.6-27B"},
+    "gemma":     {"port": 11435, "alias": "gemma4-31b-coding-mtp-optimized", "label": "Gemma4-31B"},
+    "qwen32":    {"port": 11436, "alias": "qwen3-32b-reasoning",             "label": "Qwen3-32B"},
+    "devstral":  {"port": 11437, "alias": "devstral-24b",                    "label": "Devstral-24B"},
+    "ornith9b":  {"port": 11438, "alias": "ornith-1.0-9b",                  "label": "Ornith-1.0-9B"},
+    "ornith35b": {"port": 11439, "alias": "ornith-1.0-35b-moe",             "label": "Ornith-1.0-35B-MoE"},
+}
+
+JUDGE_KEY = "qwen32"
+
+JUDGE_SOLO_SYSTEM = (
+    "You are a strict code quality judge. Evaluate the AI response based on: "
+    "correctness, code quality, completeness, and language best practices. "
+    "If the response contains a thinking/reasoning section, evaluate only the final code. "
+    'Reply ONLY with valid JSON, no other text: {"score": <integer 1-10>, "reason": "<one concise sentence>"}'
+)
+
+JUDGE_H2H_SYSTEM = (
+    "You are a strict code quality judge comparing two AI responses to the same task. "
+    "Evaluate correctness, code quality, completeness, and language best practices. "
+    "If responses contain thinking/reasoning sections, evaluate only the final code. "
+    'Reply ONLY with valid JSON, no other text: {"winner": "A" | "B" | "tie", "reason": "<one concise sentence>"}'
+)
+
+
+# ── HTTP helpers ──────────────────────────────────────────────────────────────
+
+def is_running(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def base_url(key: str) -> str:
+    return f"http://127.0.0.1:{MODELS[key]['port']}/v1"
+
+
+def _post(url: str, payload: dict, timeout: int = 300) -> dict:
+    data = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        url, data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
+def _get(url: str, timeout: int = 10) -> dict:
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
+def _stream(url: str, payload: dict, timeout: int = 300):
+    """Yield parsed SSE chunks from a streaming chat completions request."""
+    payload = {**payload, "stream": True, "stream_options": {"include_usage": True}}
+    data = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        url, data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        for raw in resp:
+            line = raw.decode().rstrip()
+            if not line.startswith("data: "):
+                continue
+            payload_str = line[6:]
+            if payload_str == "[DONE]":
+                break
+            try:
+                yield json.loads(payload_str)
+            except json.JSONDecodeError:
+                continue
+
+
+# ── Direct timings (real-world speed) ─────────────────────────────────────────
+
+def measure_timings(model_key: str, user_content: str, max_tokens: int,
+                    system: str = None, timeout: int = 600) -> dict:
+    """Single non-streaming call; returns llama.cpp's `timings` block.
+
+    Forces a fresh prefill (`cache_prompt=False`) and full-length generation
+    (`ignore_eos=True`) so prefill cost and decode rate are honest and
+    comparable across calls. If the server ignores those flags the decode
+    *rate* is still valid — only the token count would differ.
+    """
+    url = f"{base_url(model_key)}/chat/completions"
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": user_content})
+    payload = {
+        "model": MODELS[model_key]["alias"],
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": 0.6,
+        "ignore_eos": True,
+        "cache_prompt": False,
+        "stream": False,
+    }
+    resp = _post(url, payload, timeout=timeout)
+    return resp.get("timings", {}) or {}
+
+
+_FILLER = ("The quick brown fox jumps over the lazy dog while distant mountains "
+           "fade into a pale orange dusk above the slow and quiet winding river. ")
+
+
+def make_filler(target_tokens: int) -> str:
+    """Approximate filler text of ~target_tokens (≈4 chars/token). The actual
+    depth is read back from timings.prompt_n, so precision here is not critical."""
+    if target_tokens <= 0:
+        return ""
+    target_chars = int(target_tokens * 4)
+    reps = target_chars // len(_FILLER) + 1
+    return (_FILLER * reps)[:target_chars]
+
+
+def sparkline(values: list) -> str:
+    blocks = "▁▂▃▄▅▆▇█"
+    if not values:
+        return ""
+    lo, hi = min(values), max(values)
+    if hi == lo:
+        return blocks[3] * len(values)
+    return "".join(blocks[int((v - lo) / (hi - lo) * (len(blocks) - 1))] for v in values)
+
+
+def human_tokens(n) -> str:
+    n = int(n)
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
+LAUNCHAGENT_DIRS = [
+    Path.home() / "Library" / "LaunchAgents",
+    Path.home() / ".dotfiles" / "llama" / "Library" / "LaunchAgents",
+]
+
+
+def parse_launch_args(args: list) -> dict:
+    """Turn a llama-server argv into {flag: value}. Flags with no following
+    value (booleans) map to True."""
+    cfg, i, n = {}, 1, len(args)  # skip argv[0] (the binary)
+    while i < n:
+        a = args[i]
+        if isinstance(a, str) and a.startswith("-"):
+            if i + 1 < n and not str(args[i + 1]).startswith("-"):
+                cfg[a] = args[i + 1]
+                i += 2
+            else:
+                cfg[a] = True
+                i += 1
+        else:
+            i += 1
+    return cfg
+
+
+def read_model_config(model_key: str) -> dict:
+    """The authoritative llama.cpp config for a model: launch flags from its
+    launchd plist, augmented with build/ctx confirmed live from /props. This is
+    what makes every result self-documenting for tuning comparisons."""
+    import plistlib
+    cfg = {}
+    for d in LAUNCHAGENT_DIRS:
+        p = d / f"com.llama.{model_key}.plist"
+        if p.exists():
+            try:
+                with p.open("rb") as f:
+                    pl = plistlib.load(f)
+                cfg = parse_launch_args(pl.get("ProgramArguments", []))
+                cfg["_plist"] = str(p)
+            except Exception:
+                pass
+            break
+    try:
+        props = _get(f"http://127.0.0.1:{MODELS[model_key]['port']}/props")
+        bi = props.get("build_info")
+        dgs = props.get("default_generation_settings", {})
+        if not bi and isinstance(dgs, dict):
+            bi = dgs.get("build_info")
+        if bi:
+            cfg["_build"] = bi
+        if isinstance(dgs, dict) and dgs.get("n_ctx"):
+            cfg["_n_ctx_live"] = dgs["n_ctx"]
+    except Exception:
+        pass
+    return cfg
+
+
+def format_config_parts(cfg: dict) -> list:
+    """Compact, tuning-relevant flag summary (the knobs you actually turn)."""
+    if not cfg:
+        return []
+    g = cfg.get
+    parts = []
+    if g("--ctx-size"):     parts.append(f"ctx {g('--ctx-size')}")
+    if g("--batch-size"):   parts.append(f"batch {g('--batch-size')}")
+    if g("--ubatch-size"):  parts.append(f"ubatch {g('--ubatch-size')}")
+    if g("--flash-attn"):   parts.append(f"fa {g('--flash-attn')}")
+    if g("--cache-type-k") or g("--cache-type-v"):
+        parts.append(f"kv {g('--cache-type-k') or '?'}/{g('--cache-type-v') or '?'}")
+    if g("--spec-type"):
+        s = f"spec {g('--spec-type')}"
+        if g("--spec-draft-n-max"):
+            s += f" n-max {g('--spec-draft-n-max')}"
+        parts.append(s)
+    if g("--n-gpu-layers"): parts.append(f"ngl {g('--n-gpu-layers')}")
+    if g("--parallel"):     parts.append(f"parallel {g('--parallel')}")
+    if g("--threads"):      parts.append(f"threads {g('--threads')}")
+    if g("--fit"):          parts.append(f"fit {g('--fit')}")
+    return parts
+
+
+def latest_humaneval_pass1(alias: str):
+    """Best-effort pass@1 for a model alias from the newest HumanEval result
+    file that contains it. Returns (passed, total, pct, filename) or None."""
+    hdir = Path.home() / ".cache" / "llama-humaneval" / "results"
+    if not hdir.exists():
+        return None
+    for f in sorted(hdir.glob("*.json"), reverse=True):
+        try:
+            data = json.loads(f.read_text())
+        except Exception:
+            continue
+        rows = data.get("results", {}).get("results") or data.get("results") or []
+        passed = total = 0
+        for r in rows:
+            pid = (r.get("provider", {}) or {}).get("id", "")
+            if pid.endswith(alias):
+                total += 1
+                if r.get("success"):
+                    passed += 1
+        if total:
+            return (passed, total, passed / total * 100, f.name)
+    return None
+
+
+# ── Core inference ────────────────────────────────────────────────────────────
+
+def strip_think(text: str) -> str:
+    if "</think>" in text:
+        return text[text.rfind("</think>") + 8:].strip()
+    return text
+
+
+def run_prompt(model_key: str, prompt: dict, runs: int) -> dict:
+    url = f"{base_url(model_key)}/chat/completions"
+    alias = MODELS[model_key]["alias"]
+    messages = []
+    if prompt.get("system"):
+        messages.append({"role": "system", "content": prompt["system"]})
+    messages.append({"role": "user", "content": prompt["prompt"]})
+    payload = {
+        "model": alias,
+        "messages": messages,
+        "max_tokens": prompt.get("max_tokens", 768),
+        "temperature": 0.6,
+    }
+
+    samples = []
+    last_content = ""
+
+    for _ in range(runs):
+        t0 = time.perf_counter()
+        first_token_t = None
+        parts = []
+        completion_tokens = 0
+
+        for chunk in _stream(url, payload):
+            choices = chunk.get("choices", [])
+            if choices:
+                delta = choices[0].get("delta", {})
+                # Qwen3: thinking tokens arrive as reasoning_content, answer as content
+                think_tok  = delta.get("reasoning_content") or ""
+                answer_tok = delta.get("content") or ""
+                if think_tok or answer_tok:
+                    if first_token_t is None:
+                        first_token_t = time.perf_counter()
+                if answer_tok:
+                    parts.append(answer_tok)
+            usage = chunk.get("usage")
+            if usage:
+                completion_tokens = usage.get("completion_tokens", 0)
+
+        t1 = time.perf_counter()
+        content = "".join(parts)
+        last_content = content
+
+        if not completion_tokens:
+            completion_tokens = len(content.split())
+
+        ttft_ms = (first_token_t - t0) * 1000 if first_token_t else None
+        gen_s = (t1 - first_token_t) if first_token_t else (t1 - t0)
+        gen_tps = completion_tokens / gen_s if gen_s > 0 else None
+
+        samples.append({"ttft_ms": ttft_ms, "gen_tps": gen_tps})
+
+    ttfts = [s["ttft_ms"] for s in samples if s["ttft_ms"]]
+    tpss  = [s["gen_tps"]  for s in samples if s["gen_tps"]]
+
+    return {
+        "content": last_content,
+        "ttft_ms": round(statistics.mean(ttfts), 0) if ttfts else None,
+        "gen_tps": round(statistics.mean(tpss),  1) if tpss  else None,
+        "runs": runs,
+    }
+
+
+def judge_solo(task_prompt: dict, response: str) -> dict:
+    url = f"{base_url(JUDGE_KEY)}/chat/completions"
+    user_msg = (
+        f"TASK:\n{task_prompt['prompt']}\n\n"
+        f"EXPECTED BEHAVIOR:\n{task_prompt['expected_behavior']}\n\n"
+        f"RESPONSE TO EVALUATE:\n{response}"
+    )
+    try:
+        result = _post(url, {
+            "model": MODELS[JUDGE_KEY]["alias"],
+            "messages": [
+                {"role": "system", "content": JUDGE_SOLO_SYSTEM},
+                {"role": "user",   "content": user_msg},
+            ],
+            "max_tokens": 150,
+            "temperature": 0.1,
+        })
+        raw = strip_think(result["choices"][0]["message"]["content"].strip())
+        data = json.loads(raw)
+        return {"score": int(data["score"]), "reason": str(data.get("reason", ""))}
+    except Exception as e:
+        return {"score": None, "reason": f"error: {e}"}
+
+
+def judge_head_to_head(task: str, content_a: str, content_b: str) -> dict:
+    url = f"{base_url(JUDGE_KEY)}/chat/completions"
+    user_msg = (
+        f"TASK:\n{task}\n\n"
+        f"RESPONSE A:\n{content_a}\n\n"
+        f"RESPONSE B:\n{content_b}"
+    )
+    try:
+        result = _post(url, {
+            "model": MODELS[JUDGE_KEY]["alias"],
+            "messages": [
+                {"role": "system", "content": JUDGE_H2H_SYSTEM},
+                {"role": "user",   "content": user_msg},
+            ],
+            "max_tokens": 150,
+            "temperature": 0.1,
+        })
+        raw = strip_think(result["choices"][0]["message"]["content"].strip())
+        data = json.loads(raw)
+        winner = str(data.get("winner", "tie")).upper()
+        if winner not in ("A", "B", "TIE"):
+            winner = "TIE"
+        return {"winner": winner, "reason": str(data.get("reason", ""))}
+    except Exception as e:
+        return {"winner": "?", "reason": f"error: {e}"}
+
+
+# ── Prompt loading ────────────────────────────────────────────────────────────
+
+def load_prompts(categories: list) -> list:
+    prompts = []
+    for cat in categories:
+        cat_dir = SHARE_DIR / "prompts" / cat
+        if not cat_dir.exists():
+            print(f"  warning: no prompts at {cat_dir}", file=sys.stderr)
+            continue
+        for f in sorted(cat_dir.glob("*.json")):
+            with f.open() as fh:
+                p = json.load(fh)
+                p["_category"] = cat
+                prompts.append(p)
+    return prompts
+
+
+# ── Report formatting ─────────────────────────────────────────────────────────
+
+def print_run_report(run_results: dict, target_models: list, has_scores: bool):
+    w = max(len(MODELS[m]["label"]) for m in target_models) + 3
+    sep = "─" * (38 + w * len(target_models))
+    header = f"  {'Prompt':<36}" + "".join(f"{MODELS[m]['label']:>{w}}" for m in target_models)
+
+    print(f"\n{sep}")
+    print(f"llama-bench  {run_results['timestamp'][:16]}")
+    print(sep)
+
+    print("\nSPEED  (gen tok/s | TTFT ms)")
+    print(header)
+    print(sep)
+    for pid, data in run_results["prompts"].items():
+        label = f"{data['_category']}/{data['id']}"
+        row = f"  {label[:36]:<36}"
+        for m in target_models:
+            mr = data["models"].get(m, {})
+            tps, ttft = mr.get("gen_tps"), mr.get("ttft_ms")
+            cell = f"{tps:.0f}/{ttft:.0f}" if tps and ttft else "—"
+            row += f"{cell:>{w}}"
+        print(row)
+
+    if has_scores:
+        print(f"\nQUALITY  (Qwen3-32B judge, /10)")
+        print(header)
+        print(sep)
+        for pid, data in run_results["prompts"].items():
+            label = f"{data['_category']}/{data['id']}"
+            row = f"  {label[:36]:<36}"
+            for m in target_models:
+                score = data["models"].get(m, {}).get("score")
+                cell = f"{score}/10" if score is not None else "—"
+                row += f"{cell:>{w}}"
+            print(row)
+
+    print(f"\nAVERAGES")
+    print(sep)
+    labels_rows = [("tok/s (gen)", "gen_tps", ".1f"), ("TTFT ms", "ttft_ms", ".0f")]
+    for row_label, key, fmt in labels_rows:
+        row = f"  {row_label:<36}"
+        for m in target_models:
+            vals = [
+                data["models"][m][key]
+                for data in run_results["prompts"].values()
+                if m in data["models"] and data["models"][m].get(key)
+            ]
+            row += f"{(f'{statistics.mean(vals):{fmt}}' if vals else '—'):>{w}}"
+        print(row)
+
+    if has_scores:
+        row = f"  {'quality /10':<36}"
+        for m in target_models:
+            scores = [
+                data["models"][m]["score"]
+                for data in run_results["prompts"].values()
+                if m in data["models"] and data["models"][m].get("score") is not None
+            ]
+            row += f"{(f'{statistics.mean(scores):.1f}' if scores else '—'):>{w}}"
+        print(row)
+    print()
+
+
+# ── Commands ──────────────────────────────────────────────────────────────────
+
+def cmd_run(raw_args: list):
+    parser = argparse.ArgumentParser(description="Run benchmark against local llama.cpp models")
+    parser.add_argument("--models", help="Comma-separated: qwen,gemma,qwen32,devstral (default: all running)")
+    parser.add_argument("--categories", default="typescript,python")
+    parser.add_argument("--runs", type=int, default=1, help="Timing runs per prompt for averaging")
+    parser.add_argument("--speed-only", action="store_true", help="Skip quality scoring")
+    args = parser.parse_args(raw_args)
+
+    if args.models:
+        target_models = [m.strip() for m in args.models.split(",")]
+        invalid = [m for m in target_models if m not in MODELS]
+        if invalid:
+            sys.exit(f"Unknown models: {', '.join(invalid)}. Valid: {', '.join(MODELS)}")
+    else:
+        target_models = [k for k, v in MODELS.items() if is_running(v["port"])]
+
+    if not target_models:
+        sys.exit("No models running. Use: llama-start <model>")
+
+    print(f"Models:      {', '.join(MODELS[m]['label'] for m in target_models)}")
+
+    run_quality = not args.speed_only and is_running(MODELS[JUDGE_KEY]["port"])
+    if not args.speed_only and not run_quality:
+        print(f"Judge:       not running — skipping quality scoring (llama-start qwen32 to enable)")
+    elif run_quality:
+        print(f"Judge:       {MODELS[JUDGE_KEY]['label']} (:{MODELS[JUDGE_KEY]['port']})")
+
+    categories = [c.strip() for c in args.categories.split(",")]
+    prompts = load_prompts(categories)
+    if not prompts:
+        sys.exit(f"No prompts found in {SHARE_DIR / 'prompts'}. Check your stow setup.")
+
+    print(f"Prompts:     {len(prompts)} ({', '.join(categories)})")
+    print(f"Runs/prompt: {args.runs}")
+    print()
+
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    run_results = {
+        "timestamp": datetime.now().isoformat(),
+        "models": target_models,
+        "aliases": {k: MODELS[k]["alias"] for k in target_models},
+        "prompts": {},
+    }
+    has_scores = False
+
+    for p in prompts:
+        pid, cat = p["id"], p["_category"]
+        print(f"[{cat}/{pid}]")
+        run_results["prompts"][pid] = {"id": pid, "_category": cat, "models": {}}
+
+        for mk in target_models:
+            print(f"  {MODELS[mk]['label']:<20}", end="", flush=True)
+            result = run_prompt(mk, p, args.runs)
+            tps_str  = f"{result['gen_tps']:.0f}" if result.get("gen_tps")  else "?"
+            ttft_str = f"{result['ttft_ms']:.0f}" if result.get("ttft_ms") else "?"
+            print(f"  {tps_str} tok/s  TTFT {ttft_str}ms", end="", flush=True)
+
+            if run_quality and result.get("content"):
+                judgment = judge_solo(p, result["content"])
+                result.update(judgment)
+                if judgment["score"] is not None:
+                    print(f"  score {judgment['score']}/10", end="")
+                    has_scores = True
+
+            print()
+            run_results["prompts"][pid]["models"][mk] = result
+
+        print()
+
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    out_path = RESULTS_DIR / f"{ts}.json"
+    with out_path.open("w") as f:
+        json.dump(run_results, f, indent=2)
+
+    print_run_report(run_results, target_models, has_scores)
+    print(f"Results → {out_path}")
+
+
+def cmd_compare(raw_args: list):
+    parser = argparse.ArgumentParser(description="Compare two benchmark result files")
+    parser.add_argument("files", nargs="*", help="Two result JSON paths (default: last two in results dir)")
+    parser.add_argument("--speed-only", action="store_true", help="Skip head-to-head quality judging")
+    args = parser.parse_args(raw_args)
+
+    if len(args.files) == 2:
+        path_a, path_b = Path(args.files[0]), Path(args.files[1])
+    elif len(args.files) == 0:
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        all_results = sorted(RESULTS_DIR.glob("*.json"))
+        if len(all_results) < 2:
+            sys.exit(f"Need at least 2 result files in {RESULTS_DIR}. Run llama-bench first.")
+        path_a, path_b = all_results[-2], all_results[-1]
+    else:
+        sys.exit("Usage: llama-bench compare [file_a.json file_b.json]")
+
+    with path_a.open() as f:
+        res_a = json.load(f)
+    with path_b.open() as f:
+        res_b = json.load(f)
+
+    def result_label(res: dict) -> str:
+        aliases = res.get("aliases", {})
+        models  = res.get("models", [])
+        parts = [aliases.get(m, m) for m in models]
+        return ", ".join(parts) if parts else "unknown"
+
+    label_a, label_b = result_label(res_a), result_label(res_b)
+    ts_a = res_a.get("timestamp", "")[:16]
+    ts_b = res_b.get("timestamp", "")[:16]
+
+    common_pids = sorted(set(res_a.get("prompts", {})) & set(res_b.get("prompts", {})))
+    if not common_pids:
+        sys.exit("No prompts in common between the two result files.")
+
+    run_quality = not args.speed_only and is_running(MODELS[JUDGE_KEY]["port"])
+    if not args.speed_only and not run_quality:
+        print("Judge not running — showing speed comparison only (llama-start qwen32 to enable)")
+
+    sep = "─" * 72
+    print(f"\n{sep}")
+    print("llama-bench compare")
+    print(f"  A: {ts_a}  {label_a}")
+    print(f"  B: {ts_b}  {label_b}")
+    print(sep)
+
+    def get_speed(res: dict, pid: str) -> tuple:
+        for mk in res.get("models", []):
+            mr = res["prompts"].get(pid, {}).get("models", {}).get(mk, {})
+            if mr.get("gen_tps"):
+                return mr["gen_tps"], mr.get("ttft_ms")
+        return None, None
+
+    def get_content(res: dict, pid: str) -> str:
+        for mk in res.get("models", []):
+            c = res["prompts"].get(pid, {}).get("models", {}).get(mk, {}).get("content", "")
+            if c:
+                return c
+        return ""
+
+    print(f"\nSPEED  (gen tok/s | TTFT ms)")
+    print(f"  {'Prompt':<36}  {'A':>12}  {'B':>12}  {'Δ tok/s':>10}")
+    print(sep)
+
+    speed_deltas = []
+    h2h_queue = []
+
+    for pid in common_pids:
+        data  = res_a["prompts"][pid]
+        label = f"{data.get('_category', '')}/{pid}"
+        tps_a, ttft_a = get_speed(res_a, pid)
+        tps_b, ttft_b = get_speed(res_b, pid)
+
+        cell_a = f"{tps_a:.0f}/{ttft_a:.0f}" if tps_a and ttft_a else "—"
+        cell_b = f"{tps_b:.0f}/{ttft_b:.0f}" if tps_b and ttft_b else "—"
+
+        if tps_a and tps_b:
+            delta_pct = (tps_b - tps_a) / tps_a * 100
+            speed_deltas.append(delta_pct)
+            arrow = "▲" if delta_pct > 2 else ("▼" if delta_pct < -2 else "≈")
+            delta_str = f"{delta_pct:+.0f}% {arrow}"
+        else:
+            delta_str = "—"
+
+        print(f"  {label[:36]:<36}  {cell_a:>12}  {cell_b:>12}  {delta_str:>10}")
+
+        if run_quality:
+            task = res_a["prompts"][pid].get("prompt", pid)
+            h2h_queue.append((pid, data.get("_category", ""), task,
+                              get_content(res_a, pid), get_content(res_b, pid)))
+
+    if run_quality and h2h_queue:
+        print(f"\nQUALITY  (head-to-head, Qwen3-32B judge)")
+        print(f"  {'Prompt':<36}  {'Winner':>8}  Reason")
+        print(sep)
+
+        wins = {"A": 0, "B": 0, "TIE": 0}
+        for pid, cat, task, ca, cb in h2h_queue:
+            label = f"{cat}/{pid}"
+            print(f"  {label[:36]:<36}  ", end="", flush=True)
+            if not ca or not cb:
+                print("—  (missing content)")
+                continue
+            r = judge_head_to_head(task, ca, cb)
+            wins[r["winner"] if r["winner"] in wins else "TIE"] += 1
+            print(f"{'→ ' + r['winner']:>8}  {r['reason']}")
+
+    print(f"\nSUMMARY")
+    print(sep)
+    if speed_deltas:
+        avg = statistics.mean(speed_deltas)
+        n_b = sum(1 for d in speed_deltas if d >  2)
+        n_a = sum(1 for d in speed_deltas if d < -2)
+        print(f"  Speed:    B faster on {n_b}/{len(speed_deltas)}  |  A faster on {n_a}/{len(speed_deltas)}  |  avg Δ {avg:+.1f}%")
+    if run_quality and h2h_queue:
+        total = sum(wins.values())
+        verdict = ("A has quality edge" if wins["A"] > wins["B"]
+                   else "B has quality edge" if wins["B"] > wins["A"]
+                   else "roughly equivalent quality")
+        print(f"  Quality:  A wins {wins['A']}/{total}  |  B wins {wins['B']}/{total}  |  tie {wins['TIE']}/{total}  —  {verdict}")
+    print()
+
+
+ANALYSIS_PROMPT = "Write a detailed technical analysis of the material above. Be thorough and specific."
+SOAK_PROMPT = "Write a long, detailed essay on the design tradeoffs of distributed systems."
+
+
+def run_speed_for_model(mk, depths, gen_tokens, soak_min, soak_tokens,
+                        soak_context, do_curve, do_soak, report):
+    """Run the context-depth curve and/or sustained soak for one model.
+    Prints each section live and stores raw series in `report`. Shared by the
+    `soak` and `baseline` commands."""
+    # ── Context-depth decay curve ──────────────────────────────────────────
+    if do_curve and depths:
+        print(f"\nCONTEXT-DEPTH CURVE   (generating {gen_tokens} tok at each depth)")
+        print(f"  {'Context':<12}{'Prefill tok/s':>15}{'Decode tok/s':>15}{'vs base':>10}{'MTP acc':>10}")
+        print(f"  {'─' * 60}")
+        curve = []
+        base_decode = None
+        for d in depths:
+            filler = make_filler(d)
+            content = (filler + "\n\n" + ANALYSIS_PROMPT) if filler else ANALYSIS_PROMPT
+            try:
+                t = measure_timings(mk, content, gen_tokens)
+            except (urllib.error.HTTPError, urllib.error.URLError, socket.timeout, TimeoutError) as e:
+                code = getattr(e, "code", "")
+                print(f"  ~{human_tokens(d):<11}{f'(skipped {code})':>50}")
+                continue
+            actual  = t.get("prompt_n", d)
+            prefill = t.get("prompt_per_second")
+            decode  = t.get("predicted_per_second")
+            if decode and base_decode is None:
+                base_decode = decode
+            vs  = f"{(decode / base_decode - 1) * 100:+.0f}%" if (decode and base_decode) else "—"
+            acc = (t["draft_n_accepted"] / t["draft_n"] * 100) if t.get("draft_n") else None
+            pf  = f"{prefill:.1f}" if prefill else "—"
+            dc  = f"{decode:.1f}"  if decode  else "—"
+            ac  = f"{acc:.0f}%"    if acc is not None else "—"
+            print(f"  ~{human_tokens(actual):<11}{pf:>15}{dc:>15}{vs:>10}{ac:>10}")
+            curve.append({"depth": actual, "prefill_tps": prefill,
+                          "decode_tps": decode, "mtp_accept_pct": acc})
+        report["curve"][mk] = curve
+        decs = [c["decode_tps"] for c in curve if c["decode_tps"]]
+        if len(decs) >= 2 and decs[0]:
+            drop = (decs[-1] / decs[0] - 1) * 100
+            print(f"\n  Decode {decs[0]:.0f} → {decs[-1]:.0f} tok/s as context grew ({drop:+.0f}%).")
+            print(f"  This is the slowdown you feel as a conversation or file gets longer.")
+
+    # ── Sustained throttle soak ────────────────────────────────────────────
+    if do_soak:
+        secs = soak_min * 60
+        filler = make_filler(soak_context)
+        content = (filler + "\n\n" + SOAK_PROMPT) if filler else SOAK_PROMPT
+        print(f"\nSUSTAINED SOAK   ({soak_min:g} min, {soak_tokens} tok/iter, "
+              f"~{human_tokens(soak_context)} context)")
+        print(f"  back-to-back, no cooldown — watching for thermal sag...")
+        series, t_start, it = [], time.perf_counter(), 0
+        while time.perf_counter() - t_start < secs:
+            try:
+                t = measure_timings(mk, content, soak_tokens)
+            except (urllib.error.HTTPError, urllib.error.URLError, socket.timeout, TimeoutError):
+                break
+            dec = t.get("predicted_per_second")
+            if not dec:
+                continue
+            series.append(dec)
+            it += 1
+            elapsed = time.perf_counter() - t_start
+            if it == 1 or it % 5 == 0:
+                print(f"    {elapsed / 60:4.1f} min   iter {it:>3}   {dec:5.1f} tok/s")
+        report["soak"][mk] = series
+        if series:
+            start_avg = statistics.mean(series[:3]) if len(series) >= 3 else series[0]
+            end_avg   = statistics.mean(series[-3:]) if len(series) >= 3 else series[-1]
+            sag = (end_avg / start_avg - 1) * 100
+            verdict = ("degrades over the soak" if sag <= -8
+                       else "mild in-soak sag" if sag <= -3
+                       else "stable within the soak")
+            # Throttle onset: tokens generated before decode first falls and stays
+            # below 90% of the soak's peak — i.e. how long until it heats up.
+            peak = max(series)
+            onset_iter = next((i for i, v in enumerate(series) if v < 0.90 * peak), None)
+            onset_tokens = onset_iter * soak_tokens if onset_iter else None
+            report.setdefault("soak_stats", {})[mk] = {
+                "peak": peak, "floor": end_avg, "min": min(series),
+                "iters": len(series), "in_soak_sag_pct": sag,
+                "onset_iter": onset_iter, "onset_tokens": onset_tokens,
+            }
+            pts = (series if len(series) <= 48
+                   else [series[i] for i in range(0, len(series), max(1, len(series) // 48))])
+            print(f"\n  Iterations:    {len(series)}")
+            print(f"  Decode tok/s:  start {start_avg:.1f}  →  end {end_avg:.1f}   "
+                  f"(min {min(series):.1f}, max {max(series):.1f})")
+            print(f"  In-soak sag:   {sag:+.0f}%   →   {verdict}")
+            if onset_tokens:
+                print(f"  Throttle onset: after ~{onset_tokens} generated tokens (~{onset_iter} iters)")
+            print(f"  Trend: {sparkline(pts)}")
+
+
+def humaneval_pass1_by_lang(alias: str) -> dict:
+    """Per-language pass@1 for a model alias, from the newest ts-*/py-* result
+    files that contain it. Returns {'ts': (passed,total,pct), 'py': (...)}."""
+    hdir = Path.home() / ".cache" / "llama-humaneval" / "results"
+    out = {}
+    if not hdir.exists():
+        return out
+    for lang in ("ts", "py"):
+        for f in sorted(hdir.glob(f"{lang}-*.json"), reverse=True):
+            try:
+                data = json.loads(f.read_text())
+            except Exception:
+                continue
+            rows = data.get("results", {}).get("results") or data.get("results") or []
+            passed = total = 0
+            for r in rows:
+                pid = (r.get("provider", {}) or {}).get("id", "")
+                if pid.endswith(alias):
+                    total += 1
+                    if r.get("success"):
+                        passed += 1
+            if total:
+                out[lang] = (passed, total, passed / total * 100)
+                break
+    return out
+
+
+def cooldown(seconds: int):
+    """Idle the GPU so the speed test starts from a cool, un-throttled state."""
+    if seconds <= 0:
+        return
+    print(f"\nCOOLDOWN   idling {seconds}s so the GPU starts the speed test cool...")
+    t_end = time.perf_counter() + seconds
+    while True:
+        remaining = t_end - time.perf_counter()
+        if remaining <= 0:
+            break
+        print(f"    {remaining:4.0f}s remaining", end="\r", flush=True)
+        time.sleep(min(5, remaining))
+    print(" " * 30, end="\r")
+    print("    cooldown complete.")
+
+
+def cmd_soak(raw_args: list):
+    parser = argparse.ArgumentParser(
+        description="Real-world speed: context-depth decay curve + sustained throttle soak")
+    parser.add_argument("--models", help="Comma-separated (default: all running)")
+    parser.add_argument("--depths", default="0,4000,8000,16000,32000",
+                        help="Context depths in tokens for the decay curve")
+    parser.add_argument("--gen-tokens", type=int, default=256,
+                        help="Tokens generated at each curve point")
+    parser.add_argument("--soak-min", type=float, default=10.0,
+                        help="Sustained soak duration in minutes")
+    parser.add_argument("--soak-tokens", type=int, default=512,
+                        help="Tokens generated per soak iteration")
+    parser.add_argument("--soak-context", type=int, default=1000,
+                        help="Fixed context depth (tokens) held during the soak")
+    parser.add_argument("--no-curve", action="store_true", help="Skip the context-depth curve")
+    parser.add_argument("--no-soak", action="store_true", help="Skip the sustained soak")
+    args = parser.parse_args(raw_args)
+
+    if args.models:
+        target_models = [m.strip() for m in args.models.split(",")]
+        invalid = [m for m in target_models if m not in MODELS]
+        if invalid:
+            sys.exit(f"Unknown models: {', '.join(invalid)}. Valid: {', '.join(MODELS)}")
+    else:
+        target_models = [k for k, v in MODELS.items() if is_running(v["port"])]
+    if not target_models:
+        sys.exit("No models running. Use: llama-start <model>")
+
+    depths = [int(d) for d in args.depths.split(",") if d.strip() != ""]
+
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    report = {"timestamp": datetime.now().isoformat(), "models": target_models,
+              "curve": {}, "soak": {}}
+    sep = "─" * 68
+
+    print(f"Models: {', '.join(MODELS[m]['label'] for m in target_models)}")
+    if not args.no_soak:
+        est = args.soak_min * len(target_models)
+        print(f"Soak:   {args.soak_min:g} min/model  →  ~{est:g} min total")
+
+    for mk in target_models:
+        label = MODELS[mk]["label"]
+        print(f"\n{sep}")
+        print(f"{label}   —   real-world speed")
+        print(sep)
+
+        run_speed_for_model(mk, depths, args.gen_tokens, args.soak_min,
+                            args.soak_tokens, args.soak_context,
+                            not args.no_curve, not args.no_soak, report)
+
+        # ── Combined scorecard ─────────────────────────────────────────────
+        soak_series = report["soak"].get(mk) or []
+        sustained = (statistics.mean(soak_series[-3:]) if len(soak_series) >= 3
+                     else (soak_series[-1] if soak_series else None))
+        pass1 = latest_humaneval_pass1(MODELS[mk]["alias"])
+        print(f"\n  SCORECARD  {label}")
+        if sustained:
+            print(f"    Sustained decode:  {sustained:.0f} tok/s  (fastest under real load)")
+        if pass1:
+            p, tot, pct, _ = pass1
+            print(f"    HumanEval pass@1:  {pct:.0f}%  ({p}/{tot})  (most accurate)")
+        else:
+            print(f"    HumanEval pass@1:  — (run llama-humaneval to populate)")
+
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    out_path = RESULTS_DIR / f"soak-{ts}.json"
+    with out_path.open("w") as f:
+        json.dump(report, f, indent=2)
+
+    print(f"\n{sep}")
+    print("  Decode tok/s = generation speed (what streams out as you watch).")
+    print("  Prefill tok/s = prompt-processing speed (cost of ingesting context).")
+    print("  Curve shows context-growth slowdown; soak shows thermal throttling.")
+    print("  Together with pass@1, this is fastest-AND-most-accurate, measured")
+    print("  on YOUR machine under real load — not vendor burst numbers.")
+    print(f"\nResults → {out_path}\n")
+
+
+def humaneval_stats_by_lang(alias: str) -> dict:
+    """The two consistent comparison metrics, per language, from the newest
+    result file containing this alias:
+      - accuracy: clean pass@1 (timeouts excluded — they're infra, not wrong answers)
+      - sustained decode tok/s: completion tokens / wall time over completed
+        generations (failureReason 0/1; timeouts have 0 tokens + huge latency,
+        so they're excluded).
+    Returns {lang: {passed, fails, timeouts, completed, pct, gen_tps, gen_tok, ms}}."""
+    hdir = Path.home() / ".cache" / "llama-humaneval" / "results"
+    out = {}
+    if not hdir.exists():
+        return out
+    for lang in ("ts", "py"):
+        for f in sorted(hdir.glob(f"{lang}-*.json"), reverse=True):
+            try:
+                data = json.loads(f.read_text())
+            except Exception:
+                continue
+            rows = data.get("results", {}).get("results") or data.get("results") or []
+            passed = fails = timeouts = 0
+            gen_tok = ms = 0.0
+            matched = False
+            for r in rows:
+                pid = (r.get("provider", {}) or {}).get("id", "")
+                if not pid.endswith(alias):
+                    continue
+                matched = True
+                if r.get("success"):
+                    passed += 1
+                elif r.get("failureReason") == 2:
+                    timeouts += 1
+                    continue  # abandoned generation — exclude from throughput
+                else:
+                    fails += 1
+                tu = r.get("tokenUsage", {}) or {}
+                gen_tok += tu.get("completion", 0) or 0
+                ms      += r.get("latencyMs", 0) or 0
+            if matched:
+                completed = passed + fails
+                out[lang] = {
+                    "passed": passed, "fails": fails, "timeouts": timeouts,
+                    "completed": completed,
+                    "pct": (100.0 * passed / completed) if completed else None,
+                    "gen_tps": (gen_tok / (ms / 1000.0)) if ms > 0 else None,
+                    "gen_tok": gen_tok, "ms": ms,
+                }
+                break
+    return out
+
+
+def print_baseline_scorecard(mk, report, sep):
+    """Unified card. Headline = the two consistent metrics: accuracy + sustained
+    tok/s. Controlled speed detail only shown when the speed phase ran (--tuning)."""
+    label   = MODELS[mk]["label"]
+    quality = report.get("quality", {}).get(mk, {})
+    curve   = report.get("curve", {}).get(mk, [])
+    series  = report.get("soak", {}).get(mk, [])
+    sstats  = report.get("soak_stats", {}).get(mk, {})
+    cfg     = report.get("config", {}).get(mk, {})
+
+    print(f"\n{sep}")
+    print(f"  SCORECARD   {label}")
+    print(sep)
+
+    # ── Config: what produced these numbers (for tuning) ───────────────────
+    parts = format_config_parts(cfg)
+    if parts:
+        print(f"\n  CONFIG — llama.cpp launch flags (your tuning knobs)")
+        line = "    "
+        for p in parts:
+            if len(line) + len(p) + 2 > 64:
+                print(line.rstrip())
+                line = "    "
+            line += p + "  "
+        if line.strip():
+            print(line.rstrip())
+        model_name = Path(cfg.get("--model", "")).name
+        if model_name:
+            print(f"    model: {model_name}")
+        if cfg.get("_build"):
+            print(f"    build: {cfg['_build']}")
+
+    # ── ACCURACY — the consistent quality metric (clean pass@1) ────────────
+    print(f"\n  ACCURACY — HumanEval pass@1 (timeouts excluded)")
+    tot_p = tot_done = tot_to = 0
+    any_q = False
+    for key, name in (("ts", "TypeScript"), ("py", "Python")):
+        s = quality.get(key)
+        if s and s.get("completed"):
+            any_q = True
+            tot_p += s["passed"]; tot_done += s["completed"]; tot_to += s["timeouts"]
+            note = f"   [{s['timeouts']} timeouts]" if s["timeouts"] else ""
+            print(f"    {name:<12} {s['pct']:5.0f}%   ({s['passed']}/{s['completed']}){note}")
+    overall_pct = (100.0 * tot_p / tot_done) if tot_done else None
+    if overall_pct is not None:
+        note = f"   [{tot_to} timeouts]" if tot_to else ""
+        print(f"    {'Overall':<12} {overall_pct:5.0f}%   ({tot_p}/{tot_done}){note}")
+    if not any_q:
+        print(f"    — no HumanEval results")
+
+    # ── PERFORMANCE — the consistent speed metric (sustained decode) ───────
+    print(f"\n  PERFORMANCE — sustained decode tok/s (real workload, warm GPU)")
+    tot_tok = tot_ms = 0.0
+    perf_any = False
+    for key, name in (("ts", "TypeScript"), ("py", "Python")):
+        s = quality.get(key)
+        if s and s.get("gen_tps"):
+            perf_any = True
+            tot_tok += s["gen_tok"]; tot_ms += s["ms"]
+            print(f"    {name:<12} {s['gen_tps']:5.1f} tok/s")
+    overall_tps = (tot_tok / (tot_ms / 1000.0)) if tot_ms > 0 else None
+    if overall_tps is not None:
+        print(f"    {'Overall':<12} {overall_tps:5.1f} tok/s")
+    if not perf_any:
+        print(f"    — no completed generations to measure")
+
+    # ── TUNING DETAIL — controlled speed phase (only present with --tuning) ─
+    decs  = [c["decode_tps"]  for c in curve if c.get("decode_tps")]
+    prefs = [c["prefill_tps"] for c in curve if c.get("prefill_tps")]
+    mtps  = [c["mtp_accept_pct"] for c in curve if c.get("mtp_accept_pct")]
+    if curve or series:
+        print(f"\n  TUNING DETAIL — controlled speed (cold burst, context, thermal)")
+        if decs:
+            print(f"    Cold-burst decode:    {decs[0]:5.0f} tok/s")
+        if len(decs) >= 2:
+            print(f"    Decode @ ~{human_tokens(curve[-1]['depth']):<6} ctx:  "
+                  f"{decs[-1]:5.0f} tok/s   ({(decs[-1] / decs[0] - 1) * 100:+.0f}% vs short)")
+        if series:
+            floor = statistics.mean(series[-3:]) if len(series) >= 3 else series[-1]
+            print(f"    Soak floor:           {floor:5.0f} tok/s")
+        if sstats.get("onset_tokens"):
+            print(f"    Throttle onset:       after ~{sstats['onset_tokens']} tokens")
+        if prefs:
+            print(f"    Prefill (ingest):     {max(prefs):5.0f} tok/s")
+        if mtps:
+            if len(mtps) >= 2:
+                print(f"    MTP acceptance:       {mtps[0]:5.0f}% → {mtps[-1]:.0f}% (short→deep ctx)")
+            else:
+                print(f"    MTP acceptance:       {mtps[0]:5.0f}%")
+
+    # ── One-line verdict: the two metrics that matter ──────────────────────
+    if overall_pct is not None and overall_tps is not None:
+        print(f"\n  VERDICT: {overall_pct:.0f}% accuracy, {overall_tps:.1f} tok/s sustained.")
+
+
+def cmd_baseline(raw_args: list):
+    parser = argparse.ArgumentParser(
+        description="Per-model baseline. Default: HumanEval → accuracy + sustained tok/s. "
+                    "Add --tuning to also run the controlled speed phase (for llama.cpp tuning).")
+    parser.add_argument("--models", help="Comma-separated (default: all running)")
+    parser.add_argument("--languages", default="both", help="HumanEval languages: ts | py | both")
+    parser.add_argument("--limit", type=int, default=0,
+                        help="HumanEval problems per language (0 = all 159 TS / 164 Py). "
+                             "~70 gives a solid directional score in ~1/4 the time.")
+    parser.add_argument("--tuning", action="store_true",
+                        help="Also run the controlled speed phase (cold context-depth curve + "
+                             "thermal soak). For llama.cpp tuning sessions.")
+    # Speed-phase knobs (only used with --tuning)
+    parser.add_argument("--cooldown", type=int, default=0,
+                        help="[--tuning] idle seconds before the speed phase to force a cold GPU")
+    parser.add_argument("--depths", default="0,4000,8000,16000,32000",
+                        help="[--tuning] context depths for the decay curve")
+    parser.add_argument("--gen-tokens", type=int, default=256, help="[--tuning] tokens per curve point")
+    parser.add_argument("--soak-min", type=float, default=10.0, help="[--tuning] soak duration (min)")
+    parser.add_argument("--soak-tokens", type=int, default=512, help="[--tuning] tokens per soak iter")
+    parser.add_argument("--soak-context", type=int, default=1000, help="[--tuning] soak context depth")
+    parser.add_argument("--no-curve", action="store_true", help="[--tuning] skip the context curve")
+    parser.add_argument("--no-soak", action="store_true", help="[--tuning] skip the thermal soak")
+    parser.add_argument("--no-quality", action="store_true",
+                        help="Skip HumanEval (only valid with --tuning, for a speed-only run)")
+    args = parser.parse_args(raw_args)
+
+    run_quality = not args.no_quality
+    run_speed   = args.tuning
+    if not run_quality and not run_speed:
+        sys.exit("Nothing to run: --no-quality requires --tuning (for a speed-only run).")
+
+    if args.models:
+        target_models = [m.strip() for m in args.models.split(",")]
+        invalid = [m for m in target_models if m not in MODELS]
+        if invalid:
+            sys.exit(f"Unknown models: {', '.join(invalid)}. Valid: {', '.join(MODELS)}")
+    else:
+        target_models = [k for k, v in MODELS.items() if is_running(v["port"])]
+    if not target_models:
+        sys.exit("No models running. Use: llama-start <model>")
+
+    he_bin = shutil.which("llama-humaneval")
+    if run_quality and not he_bin:
+        sys.exit("llama-humaneval not found on PATH. Stow the llama package, or use --tuning --no-quality.")
+
+    depths = [int(d) for d in args.depths.split(",") if d.strip() != ""]
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    report = {"timestamp": datetime.now().isoformat(),
+              "mode": "tuning" if run_speed else "compare",
+              "models": target_models, "config": {}, "quality": {},
+              "curve": {}, "soak": {}}
+    sep = "═" * 68
+
+    print(f"Baseline for: {', '.join(MODELS[m]['label'] for m in target_models)}")
+    if run_speed:
+        pre = f"{args.cooldown}s idle → " if args.cooldown > 0 else ""
+        tail = f" → HumanEval ({args.languages})" if run_quality else ""
+        print(f"Mode:  TUNING — {pre}cold speed (curve + {args.soak_min:g}min soak){tail}")
+    else:
+        print(f"Mode:  COMPARE — HumanEval ({args.languages}) → accuracy + sustained tok/s")
+
+    for mk in target_models:
+        label = MODELS[mk]["label"]
+        alias = MODELS[mk]["alias"]
+        print(f"\n{sep}")
+        print(f"BASELINE   —   {label}")
+        print(sep)
+
+        # Stamp the active llama.cpp config so the result is self-documenting.
+        report["config"][mk] = read_model_config(mk)
+
+        # SPEED PHASE (--tuning only) — cold GPU first, so 'fresh' decode is honest;
+        # the soak then heats the chip to expose throttling.
+        if run_speed:
+            print(f"\n{'[1/2] ' if run_quality else ''}SPEED  —  cold GPU (tuning)")
+            if args.cooldown > 0:
+                cooldown(args.cooldown)
+            run_speed_for_model(mk, depths, args.gen_tokens, args.soak_min,
+                                args.soak_tokens, args.soak_context,
+                                not args.no_curve, not args.no_soak, report)
+
+        # QUALITY PHASE — HumanEval. Yields accuracy AND sustained tok/s (the two
+        # consistent comparison metrics), read back from its result files.
+        if run_quality:
+            print(f"\n{'[2/2] ' if run_speed else ''}QUALITY  —  HumanEval ({args.languages})"
+                  f"{f', first {args.limit}/lang' if args.limit else ''}")
+            cmd = [he_bin, "--language", args.languages, "--models", mk, "--quiet"]
+            if args.limit > 0:
+                cmd += ["--limit", str(args.limit)]
+            rc = subprocess.run(cmd).returncode
+            if rc != 0:
+                print(f"  note: llama-humaneval exited {rc} (some test failures are normal).")
+            report["quality"][mk] = humaneval_stats_by_lang(alias)
+
+        print_baseline_scorecard(mk, report, sep)
+
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    out_path = RESULTS_DIR / f"baseline-{ts}.json"
+    with out_path.open("w") as f:
+        json.dump(report, f, indent=2)
+    print(f"\nResults → {out_path}\n")
+
+
+def main():
+    # Line-buffer stdout so an overnight run redirected to a log file stays in
+    # chronological order (parent prints interleave correctly with subprocess output).
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "compare":
+        cmd_compare(sys.argv[2:])
+    elif cmd == "soak":
+        cmd_soak(sys.argv[2:])
+    elif cmd == "baseline":
+        cmd_baseline(sys.argv[2:])
+    else:
+        cmd_run(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    main()

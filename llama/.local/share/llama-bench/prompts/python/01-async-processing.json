@@ -1,0 +1,7 @@
+{
+  "id": "01-async-processing",
+  "system": "You are an expert Python developer. Write clean, idiomatic Python with type annotations.",
+  "prompt": "Write an async `batch_fetch(urls: list[str], concurrency: int = 10) -> list[tuple[str, str | Exception]]` function using aiohttp that fetches all URLs with a bounded concurrency limit. Each result should be a tuple of (url, response_text) on success or (url, exception) on failure. Individual failures should not cancel other requests.",
+  "expected_behavior": "Should use asyncio.Semaphore for concurrency limiting. Should catch per-request exceptions and include them as tuple values without propagating. Should preserve URL-to-result association. Should use async context managers correctly for both the session and the semaphore. Type annotations should be correct including the union return type.",
+  "max_tokens": 600
+}

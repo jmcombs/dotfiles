@@ -1,0 +1,7 @@
+{
+  "id": "03-bug-fix",
+  "system": "You are an expert Python developer. Identify and fix all bugs in the code provided.",
+  "prompt": "Find and fix the bugs in this Python code. Explain each bug briefly.\n\n```python\ndef make_accumulator(initial=[]):\n    def add(item):\n        initial.append(item)\n        return initial\n    return add\n\ndef flatten(nested):\n    result = []\n    for item in nested:\n        if isinstance(item, list):\n            result.extend(flatten(item))\n        result.append(item)\n    return result\n\nclass LazyIterator:\n    def __init__(self, data):\n        self.gen = (x * 2 for x in data)\n\n    def take(self, n):\n        return [next(self.gen) for _ in range(n)]\n\n    def reset(self, data):\n        self.gen = (x * 2 for x in data)\n        return self\n\niterator = LazyIterator([1, 2, 3, 4, 5])\nprint(iterator.take(2))  # expects [2, 4]\nprint(iterator.take(2))  # expects [6, 8]\n```",
+  "expected_behavior": "Should identify: (1) mutable default argument in make_accumulator — shared across all calls, fix with None sentinel. (2) flatten appends non-list items twice (both extends and appends when item is a list) — the append should be in an else branch. Should provide corrected code that passes basic test cases.",
+  "max_tokens": 600
+}

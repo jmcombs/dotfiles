@@ -1,0 +1,371 @@
+#!/usr/bin/env node
+// HumanEval benchmark runner for local llama.cpp models.
+// Fetches MultiPL-E (TypeScript) and openai/openai_humaneval (Python) from
+// the HuggingFace datasets server, runs them through promptfoo, reports pass@1.
+//
+// Usage:
+//   llama-humaneval                          both languages, all running models
+//   llama-humaneval --language ts            TypeScript only
+//   llama-humaneval --language py            Python only
+//   llama-humaneval --models qwen,qwen32     specific models
+//   llama-humaneval --limit 20               first N problems (quick smoke test)
+
+'use strict';
+
+const { execSync, spawnSync } = require('child_process');
+const fs   = require('fs');
+const http = require('http');
+const https = require('https');
+const os   = require('os');
+const path = require('path');
+
+// ── Config ────────────────────────────────────────────────────────────────────
+
+const MODELS = {
+  qwen:     { port: 11434, alias: 'qwen3.6-27b-coding-optimized',   label: 'Qwen3.6-27B' },
+  gemma:    { port: 11435, alias: 'gemma4-31b-coding-mtp-optimized', label: 'Gemma4-31B'  },
+  qwen32:   { port: 11436, alias: 'qwen3-32b-reasoning',             label: 'Qwen3-32B'   },
+  devstral: { port: 11437, alias: 'devstral-24b',                    label: 'Devstral-24B'},
+};
+
+const SHARE_DIR   = path.join(os.homedir(), '.local', 'share', 'humaneval');
+const CACHE_DIR   = path.join(os.homedir(), '.cache', 'llama-humaneval');
+const RESULTS_DIR = path.join(CACHE_DIR, 'results');
+
+const DATASETS = {
+  ts: {
+    label:      'TypeScript (MultiPL-E)',
+    url:        'https://datasets-server.huggingface.co/rows?dataset=nuprl/MultiPL-E&config=humaneval-ts&split=test',
+    assertFile: path.join(SHARE_DIR, 'assert_ts.js'),
+    promptField: 'prompt',
+    testField:   'tests',
+    systemPrompt: [
+      'You are a TypeScript expert.',
+      'Complete the given function.',
+      'Output ONLY the implementation wrapped in a ```typescript ... ``` code block.',
+      'No explanation or commentary outside the code block.',
+    ].join(' '),
+  },
+  py: {
+    label:      'Python (HumanEval)',
+    url:        'https://datasets-server.huggingface.co/rows?dataset=openai/openai_humaneval&config=openai_humaneval&split=test',
+    assertFile: path.join(SHARE_DIR, 'assert_py.js'),
+    promptField: 'prompt',
+    testField:   'test',
+    systemPrompt: [
+      'You are a Python expert.',
+      'Complete the given function.',
+      'Output ONLY the implementation wrapped in a ```python ... ``` code block.',
+      'No explanation or commentary outside the code block.',
+    ].join(' '),
+  },
+};
+
+// ── Argument parsing ──────────────────────────────────────────────────────────
+
+const args = process.argv.slice(2);
+const getArg = (flag, def) => {
+  const i = args.indexOf(flag);
+  return i !== -1 && args[i + 1] ? args[i + 1] : def;
+};
+const hasFlag = flag => args.includes(flag);
+
+const langArg  = getArg('--language', 'both');
+const modelsArg = getArg('--models', null);
+const limit    = parseInt(getArg('--limit', '0'), 10);
+const quiet    = hasFlag('--quiet');  // compact output (used by `llama-eval baseline`)
+
+const languages = langArg === 'both' ? ['ts', 'py'] : [langArg];
+if (!languages.every(l => l in DATASETS)) {
+  console.error(`Unknown language. Use: ts, py, or both`);
+  process.exit(1);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function isRunning(port) {
+  try {
+    const result = spawnSync('bash', ['-c', `lsof -i :${port} -sTCP:LISTEN`], { encoding: 'utf8' });
+    return result.stdout.trim().length > 0;
+  } catch { return false; }
+}
+
+function fetch(url, attempt = 0) {
+  const TRANSIENT = ['EPIPE', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN'];
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https') ? https : http;
+    const req = client.get(url, res => {
+      // Follow redirects (HF sometimes 302s to a CDN).
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        resolve(fetch(res.headers.location, attempt));
+        return;
+      }
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error(`JSON parse failed for ${url}: ${data.slice(0, 200)}`)); }
+      });
+    });
+    req.on('error', err => {
+      if (attempt < 3 && TRANSIENT.includes(err.code)) {
+        setTimeout(() => resolve(fetch(url, attempt + 1)), 600 * (attempt + 1));
+      } else {
+        reject(err);
+      }
+    });
+  });
+}
+
+async function fetchAllRows(baseUrl, totalLimit) {
+  const pageSize = 100;
+  const rows = [];
+  let offset = 0;
+
+  while (true) {
+    const url = `${baseUrl}&offset=${offset}&limit=${pageSize}`;
+    const data = await fetch(url);
+    if (!data.rows || data.rows.length === 0) break;
+    rows.push(...data.rows.map(r => r.row));
+    if (data.rows.length < pageSize) break;
+    offset += pageSize;
+    if (totalLimit > 0 && rows.length >= totalLimit) break;
+  }
+
+  return totalLimit > 0 ? rows.slice(0, totalLimit) : rows;
+}
+
+function checkDep(cmd, installHint) {
+  const result = spawnSync('which', [cmd], { encoding: 'utf8' });
+  if (result.status !== 0) {
+    console.error(`Missing dependency: ${cmd}`);
+    console.error(`  Install: ${installHint}`);
+    process.exit(1);
+  }
+}
+
+// ── Config generation ─────────────────────────────────────────────────────────
+
+function buildPromptfooConfig(lang, dataset, problems, targetModels) {
+  const providers = targetModels.map(key => ({
+    id: `openai:chat:${MODELS[key].alias}`,
+    config: {
+      apiBaseUrl: `http://127.0.0.1:${MODELS[key].port}/v1`,
+      apiKey: 'local',
+      max_tokens: 8192,
+    },
+  }));
+
+  const tests = problems.map(p => ({
+    description: p.name || p.task_id,
+    vars: {
+      prompt:      p[dataset.promptField],
+      [dataset.testField === 'tests' ? 'tests' : 'test']: p[dataset.testField],
+      entry_point: p.entry_point,
+    },
+  }));
+
+  return {
+    providers,
+    prompts: [`${dataset.systemPrompt}\n\n{{prompt}}`],
+    defaultTest: {
+      assert: [{ type: 'javascript', value: `file://${dataset.assertFile}` }],
+    },
+    tests,
+    commandLineOptions: {
+      maxConcurrency: 1,
+    },
+  };
+}
+
+// ── Result parsing ────────────────────────────────────────────────────────────
+
+// Shorten a HumanEval test name for display: "HumanEval_0_has_close_elements"
+// → "has_close_elements". Falls back to whatever name is available.
+function shortName(row) {
+  const raw = row.testCase?.description || row.vars?.name || row.description || '?';
+  const m = raw.match(/^HumanEval[_-]?\d+[_-](.+)$/);
+  return m ? m[1] : raw;
+}
+
+function summarise(resultsPath, targetModels, lang, total) {
+  const raw  = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+  const rows = raw.results?.results ?? raw.results ?? [];
+
+  // Group rows by model key.
+  const byModel = {};
+  for (const key of targetModels) byModel[key] = [];
+  for (const row of rows) {
+    const alias = row.provider?.id?.split(':').pop() || '';
+    const key   = Object.keys(MODELS).find(k => MODELS[k].alias === alias);
+    if (key && byModel[key]) byModel[key].push(row);
+  }
+
+  const label = DATASETS[lang].label;
+  const sep   = '─'.repeat(64);
+
+  // Per-problem breakdown, one block per model (suppressed in --quiet mode,
+  // e.g. when called from `llama-eval baseline`, which prints its own scorecard).
+  if (!quiet) {
+    for (const key of targetModels) {
+      const modelRows = byModel[key];
+      if (!modelRows.length) continue;
+      console.log(`\n${sep}`);
+      console.log(`${MODELS[key].label}  —  ${label}`);
+      console.log(sep);
+      for (const row of modelRows) {
+        const ok   = row.success;
+        const mark = ok ? '✓ PASS' : '✗ FAIL';
+        const name = shortName(row).padEnd(34);
+        if (ok) {
+          console.log(`  ${mark}  ${name}`);
+        } else {
+          // First line of the test failure — the assertion/compile error, not the
+          // model's reasoning dump.
+          const reason = (row.gradingResult?.reason || row.error || 'failed')
+            .split('\n')[0].trim().slice(0, 48);
+          console.log(`  ${mark}  ${name}  ${reason}`);
+        }
+      }
+    }
+  }
+
+  // Summary table across all models, with generation throughput.
+  console.log(`\n${sep}`);
+  console.log(`SUMMARY  —  HumanEval ${label}  (${total} problems)`);
+  console.log(sep);
+  console.log(
+    `  ${'Model'.padEnd(20)}  ${'Pass@1'.padEnd(9)}  ${'Score'.padEnd(8)}` +
+    `  ${'Gen tok/s'.padEnd(10)}  Avg/prob`
+  );
+  console.log(sep);
+  for (const key of targetModels) {
+    const modelRows = byModel[key];
+    const pass = modelRows.filter(r => r.success).length;
+    const tot  = modelRows.length;
+    const pct  = tot > 0 ? ((pass / tot) * 100).toFixed(1) + '%' : '?';
+
+    // Generation throughput: total completion tokens / total wall time.
+    // HumanEval prompts are tiny (~150 tok), so prefill is negligible and this
+    // is effectively decode speed.
+    let genTok = 0, ms = 0;
+    for (const r of modelRows) {
+      genTok += r.tokenUsage?.completion || 0;
+      ms     += r.latencyMs || 0;
+    }
+    const tokPerSec = ms > 0 ? (genTok / (ms / 1000)).toFixed(1) : '?';
+    const avgSec    = tot > 0 ? (ms / tot / 1000).toFixed(0) + 's' : '?';
+
+    console.log(
+      `  ${MODELS[key].label.padEnd(20)}  ${(pass + '/' + tot).padEnd(9)}  ${pct.padEnd(8)}` +
+      `  ${String(tokPerSec).padEnd(10)}  ${avgSec}`
+    );
+  }
+  console.log(sep);
+
+  // What the numbers mean (suppressed in --quiet mode).
+  if (!quiet) {
+    console.log();
+    console.log('  Pass@1   = share of problems solved correctly on the first try.');
+    console.log('             The model writes one function per problem; it passes');
+    console.log('             only if every official HumanEval unit test succeeds.');
+    console.log('             Measures functional correctness (does the code run and');
+    console.log('             return right results), not style or readability.');
+    console.log('             Strong coding models land in the 70-90% range.');
+    console.log('  Gen tok/s = output generation throughput on this workload');
+    console.log('             (completion tokens / wall time). Decode-dominated here');
+    console.log('             since prompts are small; this is real-world coding-');
+    console.log('             output speed. For prefill/prompt-processing speed on');
+    console.log('             large inputs, use llama-eval instead.');
+  }
+  console.log();
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+(async () => {
+  // Dependency checks
+  checkDep('promptfoo', 'npm install -g promptfoo');
+  if (languages.includes('ts')) {
+    checkDep('bun', 'brew install bun');
+  }
+
+  // Resolve target models
+  let targetModels;
+  if (modelsArg) {
+    targetModels = modelsArg.split(',').map(s => s.trim());
+    const invalid = targetModels.filter(k => !(k in MODELS));
+    if (invalid.length) {
+      console.error(`Unknown models: ${invalid.join(', ')}. Valid: ${Object.keys(MODELS).join(', ')}`);
+      process.exit(1);
+    }
+  } else {
+    targetModels = Object.keys(MODELS).filter(k => isRunning(MODELS[k].port));
+  }
+
+  if (targetModels.length === 0) {
+    console.error('No models running. Use: llama-start <model>');
+    process.exit(1);
+  }
+
+  fs.mkdirSync(RESULTS_DIR, { recursive: true });
+
+  console.log(`Models:   ${targetModels.map(k => MODELS[k].label).join(', ')}`);
+  console.log(`Language: ${languages.join(', ')}`);
+  if (limit > 0) console.log(`Limit:    ${limit} problems per language`);
+  console.log();
+
+  for (const lang of languages) {
+    try {
+      const dataset = DATASETS[lang];
+      console.log(`Fetching ${dataset.label}...`);
+      const problems = await fetchAllRows(dataset.url, limit);
+      console.log(`  ${problems.length} problems loaded`);
+      console.log();
+
+      const config    = buildPromptfooConfig(lang, dataset, problems, targetModels);
+      const ts        = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const configPath  = path.join(CACHE_DIR, `config-${lang}-${ts}.yaml`);
+      const resultsPath = path.join(RESULTS_DIR, `${lang}-${ts}.json`);
+
+      // Write YAML — using JSON (valid YAML superset) for simplicity
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+      console.log(`Running promptfoo eval (${lang.toUpperCase()})...`);
+      const result = spawnSync(
+        'promptfoo',
+        ['eval', '--config', configPath, '--output', resultsPath, '--no-cache', '--no-table'],
+        {
+          stdio: 'inherit',
+          encoding: 'utf8',
+          // Thinking models can burn the full 8192-token budget on a hard problem.
+          // promptfoo's default 300s request timeout (getEnvInt("REQUEST_TIMEOUT_MS",
+          // 3e5)) cuts those off and retries 4x. Give each request 15 min so a
+          // slow-but-valid answer still counts. (PROMPTFOO_EVAL_TIMEOUT_MS defaults
+          // to 0 = disabled, so the request timeout is the only one that matters.)
+          env: { ...process.env, REQUEST_TIMEOUT_MS: '900000' },
+        }
+      );
+
+      // promptfoo exit codes: 0 = all passed, 100 = completed with failures/errors
+      // (results still written), anything else = real failure to run.
+      if (result.status !== 0 && result.status !== 100) {
+        console.error(`promptfoo failed to run (exit ${result.status}); skipping ${lang}.`);
+        continue;
+      }
+      if (!fs.existsSync(resultsPath)) {
+        console.error(`No results file written for ${lang}; skipping.`);
+        continue;
+      }
+
+      summarise(resultsPath, targetModels, lang, problems.length);
+      console.log(`Full results → ${resultsPath}`);
+    } catch (e) {
+      console.error(`Error during ${lang} eval: ${e.message} — continuing.`);
+    }
+  }
+})().catch(e => {
+  console.error(`Fatal: ${e.message}`);
+  process.exit(1);
+});

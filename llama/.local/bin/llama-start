@@ -2,12 +2,14 @@
 set -e
 
 case "$1" in
-  qwen)     label="com.llama.qwen"     ;;
-  gemma)    label="com.llama.gemma"    ;;
-  qwen32)   label="com.llama.qwen32"   ;;
-  devstral) label="com.llama.devstral" ;;
+  qwen)       label="com.llama.qwen"       ;;
+  gemma)      label="com.llama.gemma"      ;;
+  qwen32)     label="com.llama.qwen32"     ;;
+  devstral)   label="com.llama.devstral"   ;;
+  ornith9b)   label="com.llama.ornith9b"   ;;
+  ornith35b)  label="com.llama.ornith35b"  ;;
   *)
-    echo "Usage: llama-start <qwen|gemma|qwen32|devstral>"
+    echo "Usage: llama-start <qwen|gemma|qwen32|devstral|ornith9b|ornith35b>"
     exit 1
     ;;
 esac

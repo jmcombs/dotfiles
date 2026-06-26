@@ -1,0 +1,7 @@
+{
+  "id": "03-generic-fn",
+  "system": "You are an expert TypeScript developer. Respond with clean, idiomatic TypeScript.",
+  "prompt": "Write a fully typed `groupBy<T, K extends keyof T>` function that groups an array of objects by a key. The return type should be `Record<string, T[]>` but as precise as possible. Then write a second overload or variant `groupByFn<T, K extends string | number>` that accepts a key extractor function instead of a property name.",
+  "expected_behavior": "groupBy should accept an array of T and a key K that exists on T, returning a Record where keys are the string representation of T[K] values. groupByFn should accept an array of T and a (item: T) => K function. Both should work without type assertions. Include brief usage examples showing the types are correctly inferred.",
+  "max_tokens": 512
+}

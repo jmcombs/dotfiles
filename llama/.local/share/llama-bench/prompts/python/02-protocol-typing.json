@@ -1,0 +1,7 @@
+{
+  "id": "02-protocol-typing",
+  "system": "You are an expert Python developer. Write clean, idiomatic Python with type annotations.",
+  "prompt": "Define a `Comparable` Protocol that requires `__lt__` and `__eq__` methods. Then write a generic `merge_sorted(a: list[T], b: list[T]) -> list[T]` function constrained to T: Comparable that merges two sorted lists into one sorted list in O(n+m) time. Include the Protocol definition and use TypeVar correctly.",
+  "expected_behavior": "Protocol should use runtime_checkable decorator and define __lt__(self, other: Any) -> bool and __eq__(self, other: object) -> bool. TypeVar should be bound to Comparable. merge_sorted should implement the two-pointer merge algorithm, not sort() after concatenation. Type annotations should pass mypy strict mode.",
+  "max_tokens": 512
+}

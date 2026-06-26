@@ -1,0 +1,7 @@
+{
+  "id": "01-type-utils",
+  "system": "You are an expert TypeScript developer. Respond with clean, idiomatic TypeScript.",
+  "prompt": "Write a TypeScript utility type `DeepReadonly<T>` that recursively makes all properties readonly, handling nested objects, arrays, and primitive types correctly. Then show a usage example with a nested interface.",
+  "expected_behavior": "Should define a recursive conditional/mapped type that applies readonly to all object properties at every level of nesting. Arrays should become ReadonlyArray. Primitives should pass through unchanged. The usage example should demonstrate at least one level of nesting and show that the type correctly restricts mutation.",
+  "max_tokens": 512
+}

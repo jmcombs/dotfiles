@@ -1,0 +1,7 @@
+{
+  "id": "04-pytest-fixtures",
+  "system": "You are an expert Python developer. Write thorough pytest tests with proper fixtures.",
+  "prompt": "Write pytest tests for this class:\n\n```python\nclass TokenBucket:\n    def __init__(self, capacity: int, refill_rate: float):\n        \"\"\"capacity: max tokens. refill_rate: tokens added per second.\"\"\"\n        self.capacity = capacity\n        self.tokens = capacity\n        self._refill_rate = refill_rate\n        self._last_refill = time.monotonic()\n\n    def consume(self, tokens: int = 1) -> bool:\n        self._refill()\n        if self.tokens >= tokens:\n            self.tokens -= tokens\n            return True\n        return False\n\n    def _refill(self):\n        now = time.monotonic()\n        elapsed = now - self._last_refill\n        self.tokens = min(self.capacity, self.tokens + elapsed * self._refill_rate)\n        self._last_refill = now\n```",
+  "expected_behavior": "Should use pytest fixtures for the TokenBucket instance. Should mock time.monotonic() to control time without sleeping. Tests should cover: consume succeeds when tokens available, consume fails when bucket empty, partial consumption, bucket does not exceed capacity on refill, multiple consumes deplete correctly, time-based refill adds correct token count. At least 6 test cases using pytest idioms (not unittest).",
+  "max_tokens": 700
+}

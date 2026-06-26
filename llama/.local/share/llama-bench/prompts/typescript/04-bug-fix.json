@@ -1,0 +1,7 @@
+{
+  "id": "04-bug-fix",
+  "system": "You are an expert TypeScript developer. Identify and fix all bugs in the code provided.",
+  "prompt": "Find and fix the bugs in this TypeScript code. Explain each bug briefly.\n\n```typescript\nasync function fetchAll(urls: string[]): Promise<string[]> {\n  const results: string[] = [];\n  urls.forEach(async (url) => {\n    const res = await fetch(url);\n    results.push(await res.text());\n  });\n  return results;\n}\n\nfunction mergeConfigs<T>(base: T, overrides: Partial<T>): T {\n  return { ...base, ...overrides } as T;\n}\n\ntype EventMap = {\n  click: MouseEvent;\n  keydown: KeyboardEvent;\n};\n\nfunction on<K extends string>(event: K, handler: (e: EventMap[K]) => void) {\n  document.addEventListener(event, handler as EventListener);\n}\n```",
+  "expected_behavior": "Should identify at minimum: (1) the async-in-forEach bug where forEach does not await the promises so results is returned empty; fix should use Promise.all with map. (2) The on() function has a type error because K extends string but EventMap[K] is not valid without K extends keyof EventMap. Should provide corrected code for both issues.",
+  "max_tokens": 600
+}

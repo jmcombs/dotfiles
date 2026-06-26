@@ -1,0 +1,7 @@
+{
+  "id": "02-async-patterns",
+  "system": "You are an expert TypeScript developer. Respond with clean, idiomatic TypeScript.",
+  "prompt": "Write a typed `withRetry<T>` higher-order function that wraps an async function and retries it up to N times with exponential backoff on failure. It should accept the target function, max retries, and initial delay in ms. Include proper TypeScript generics so the return type is inferred correctly.",
+  "expected_behavior": "Should use generics to preserve the return type of the wrapped function. Backoff should multiply the delay between retries (e.g. delay * 2^attempt). Should re-throw the last error after exhausting retries. Should not swallow intermediate errors silently. Types should be fully inferred without casting.",
+  "max_tokens": 600
+}

@@ -1,0 +1,7 @@
+{
+  "id": "05-data-pipeline",
+  "system": "You are an expert Python developer. Write clean, idiomatic Python with type annotations.",
+  "prompt": "Write a composable data pipeline using a `Pipeline` class that chains transformation steps. Each step is a `Callable[[T], T]`. The class should support: (1) `pipe(*fns)` class method to build a pipeline from functions, (2) `__call__` to apply the pipeline to a value, (3) `__or__` to compose two pipelines together. Include type generics so the input and output types are tracked. Show a usage example with at least 3 chained string/numeric transformations.",
+  "expected_behavior": "Should use Generic[T] or appropriate TypeVar. __or__ should return a new Pipeline composing self then other. pipe() should be a classmethod. The class should be callable (implement __call__). Example should demonstrate that piping works and that __or__ correctly chains two pipelines. Type annotations should be present and logically correct even if not fully expressible with current Python generics.",
+  "max_tokens": 600
+}
