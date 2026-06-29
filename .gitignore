@@ -4,3 +4,4 @@
 # Local theme files copied into stow-managed config directories
 ghostty/.config/ghostty/themes/
 posh/.config/oh-my-posh/themes/
+llama/.local/bin/__pycache__/

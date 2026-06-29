@@ -14,10 +14,14 @@
 #   llama-bench baseline --models qwen   model comparison: HumanEval → accuracy + sustained tok/s
 #   llama-bench baseline --models qwen --limit 70     faster directional comparison
 #   llama-bench baseline --models qwen --tuning       also run speed phase (for llama.cpp tuning)
+#   llama-bench progress                 live HumanEval progress (read-only; ACTIVE/IDLE aware)
+#   llama-bench progress --once          single snapshot
 
 import argparse
 import json
+import os
 import shutil
+import signal
 import socket
 import statistics
 import subprocess
@@ -30,6 +34,7 @@ from pathlib import Path
 
 SHARE_DIR = Path.home() / ".local" / "share" / "llama-bench"
 RESULTS_DIR = Path.home() / ".cache" / "llama-bench" / "results"
+LOGS_DIR = Path.home() / ".cache" / "llama-bench" / "logs"
 
 MODELS = {
     "qwen":      {"port": 11434, "alias": "qwen3.6-27b-coding-optimized",   "label": "Qwen3.6-27B"},
@@ -896,13 +901,16 @@ def cmd_soak(raw_args: list):
 
 
 def humaneval_stats_by_lang(alias: str) -> dict:
-    """The two consistent comparison metrics, per language, from the newest
-    result file containing this alias:
+    """Comparison metrics per language, from the newest result file containing
+    this alias:
       - accuracy: clean pass@1 (timeouts excluded — they're infra, not wrong answers)
-      - sustained decode tok/s: completion tokens / wall time over completed
-        generations (failureReason 0/1; timeouts have 0 tokens + huge latency,
-        so they're excluded).
-    Returns {lang: {passed, fails, timeouts, completed, pct, gen_tps, gen_tok, ms}}."""
+      - median decode tok/s: middle per-problem decode rate — the TYPICAL speed,
+        robust to a few runaway generations.
+      - aggregate decode tok/s: total completion tokens / total wall time — the
+        END-TO-END batch throughput, which a few stalls can drag down hard.
+    (Both are real and answer different questions; report both.)
+    Returns {lang: {passed, fails, timeouts, completed, pct,
+                    median_tps, gen_tps, gen_tok, ms, tps_list}}."""
     hdir = Path.home() / ".cache" / "llama-humaneval" / "results"
     out = {}
     if not hdir.exists():
@@ -916,6 +924,7 @@ def humaneval_stats_by_lang(alias: str) -> dict:
             rows = data.get("results", {}).get("results") or data.get("results") or []
             passed = fails = timeouts = 0
             gen_tok = ms = 0.0
+            tps_list = []
             matched = False
             for r in rows:
                 pid = (r.get("provider", {}) or {}).get("id", "")
@@ -930,16 +939,22 @@ def humaneval_stats_by_lang(alias: str) -> dict:
                 else:
                     fails += 1
                 tu = r.get("tokenUsage", {}) or {}
-                gen_tok += tu.get("completion", 0) or 0
-                ms      += r.get("latencyMs", 0) or 0
+                comp = tu.get("completion", 0) or 0
+                lat  = r.get("latencyMs", 0) or 0
+                gen_tok += comp
+                ms      += lat
+                if comp > 0 and lat > 0:
+                    tps_list.append(comp / (lat / 1000.0))
             if matched:
                 completed = passed + fails
                 out[lang] = {
                     "passed": passed, "fails": fails, "timeouts": timeouts,
                     "completed": completed,
                     "pct": (100.0 * passed / completed) if completed else None,
+                    "median_tps": (statistics.median(tps_list) if tps_list else None),
                     "gen_tps": (gen_tok / (ms / 1000.0)) if ms > 0 else None,
                     "gen_tok": gen_tok, "ms": ms,
+                    "tps_list": tps_list,
                 }
                 break
     return out
@@ -995,19 +1010,26 @@ def print_baseline_scorecard(mk, report, sep):
     if not any_q:
         print(f"    — no HumanEval results")
 
-    # ── PERFORMANCE — the consistent speed metric (sustained decode) ───────
-    print(f"\n  PERFORMANCE — sustained decode tok/s (real workload, warm GPU)")
+    # ── PERFORMANCE — decode tok/s, both ways (typical vs batch end-to-end) ─
+    print(f"\n  PERFORMANCE — decode tok/s")
+    print(f"    median = typical response speed; aggregate = batch end-to-end (stalls drag it)")
     tot_tok = tot_ms = 0.0
+    all_tps = []
     perf_any = False
     for key, name in (("ts", "TypeScript"), ("py", "Python")):
         s = quality.get(key)
         if s and s.get("gen_tps"):
             perf_any = True
             tot_tok += s["gen_tok"]; tot_ms += s["ms"]
-            print(f"    {name:<12} {s['gen_tps']:5.1f} tok/s")
+            all_tps += s.get("tps_list") or []
+            med = s.get("median_tps")
+            med_s = f"{med:5.1f}" if med is not None else "  —  "
+            flag = "  ← stalls" if (med and s["gen_tps"] and s["gen_tps"] < 0.6 * med) else ""
+            print(f"    {name:<12} median {med_s}    aggregate {s['gen_tps']:5.1f}{flag}")
     overall_tps = (tot_tok / (tot_ms / 1000.0)) if tot_ms > 0 else None
+    overall_med = statistics.median(all_tps) if all_tps else None
     if overall_tps is not None:
-        print(f"    {'Overall':<12} {overall_tps:5.1f} tok/s")
+        print(f"    {'Overall':<12} median {overall_med:5.1f}    aggregate {overall_tps:5.1f}")
     if not perf_any:
         print(f"    — no completed generations to measure")
 
@@ -1036,8 +1058,112 @@ def print_baseline_scorecard(mk, report, sep):
                 print(f"    MTP acceptance:       {mtps[0]:5.0f}%")
 
     # ── One-line verdict: the two metrics that matter ──────────────────────
-    if overall_pct is not None and overall_tps is not None:
-        print(f"\n  VERDICT: {overall_pct:.0f}% accuracy, {overall_tps:.1f} tok/s sustained.")
+    if overall_pct is not None and overall_med is not None:
+        note = ""
+        if overall_tps and overall_tps < 0.6 * overall_med:
+            note = f" (batch aggregate {overall_tps:.0f} — runaway stalls)"
+        print(f"\n  VERDICT: {overall_pct:.0f}% accuracy, {overall_med:.0f} tok/s typical decode{note}.")
+
+
+def _terminate_group(proc):
+    """SIGTERM then SIGKILL the child's whole process group (node → promptfoo →
+    its node child), so Ctrl-C never orphans the tree. The llama-server model is
+    a separate launchd process and is left untouched."""
+    try:
+        pgid = os.getpgid(proc.pid)
+    except ProcessLookupError:
+        return
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            os.killpg(pgid, signal.SIGKILL)
+            proc.wait()
+    except ProcessLookupError:
+        pass
+
+
+def run_cancellable(cmd: list) -> int:
+    """Run a child in its own session/process group and wait. On Ctrl-C, tear the
+    whole tree down cleanly before re-raising so the caller can save state."""
+    proc = subprocess.Popen(cmd, start_new_session=True)
+    try:
+        return proc.wait()
+    except KeyboardInterrupt:
+        # Terminate FIRST — this must happen even if stdout is broken. (Printing
+        # before this is what orphaned promptfoo: the print raised BrokenPipeError
+        # and the kill never ran.)
+        _terminate_group(proc)
+        try:
+            print("\n  interrupted — promptfoo terminated.", flush=True)
+        except Exception:
+            pass
+        raise
+
+
+def save_report(report: dict, out_path: Path):
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w") as f:
+        json.dump(report, f, indent=2)
+
+
+class _TeeLog:
+    """Context manager: tee this process's stdout+stderr — and anything its child
+    processes write — to a log file, while still showing on the terminal. Uses a
+    `tee` child + dup2 on fds 1/2, because a pure-Python sys.stdout wrapper would
+    NOT capture subprocess (promptfoo) output. Degrades gracefully if `tee` or the
+    fd dance fails (just skips logging)."""
+    def __init__(self, path: Path):
+        self.path = path
+        self.tee = None
+        self.saved_out = self.saved_err = None
+
+    def __enter__(self):
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            sys.stdout.flush(); sys.stderr.flush()
+            self.saved_out = os.dup(1)
+            self.saved_err = os.dup(2)
+            # tee inherits saved_out as its stdout → echoes to the real terminal.
+            # start_new_session=True so Ctrl-C (SIGINT to the foreground process
+            # group) does NOT kill tee — otherwise our stdout pipe breaks and the
+            # cleanup path dies with BrokenPipeError before it can stop promptfoo.
+            self.tee = subprocess.Popen(["tee", str(self.path)],
+                                        stdin=subprocess.PIPE, stdout=self.saved_out,
+                                        start_new_session=True)
+            os.dup2(self.tee.stdin.fileno(), 1)
+            os.dup2(self.tee.stdin.fileno(), 2)
+        except Exception:
+            self._restore()
+        return self
+
+    def _restore(self):
+        try:
+            sys.stdout.flush(); sys.stderr.flush()
+        except Exception:
+            pass
+        if self.saved_out is not None:
+            try: os.dup2(self.saved_out, 1)
+            except Exception: pass
+        if self.saved_err is not None:
+            try: os.dup2(self.saved_err, 2)
+            except Exception: pass
+        if self.tee is not None:
+            try: self.tee.stdin.close()
+            except Exception: pass
+            try: self.tee.wait(timeout=5)
+            except Exception: pass
+            self.tee = None
+        for fd in (self.saved_out, self.saved_err):
+            if fd is not None:
+                try: os.close(fd)
+                except Exception: pass
+        self.saved_out = self.saved_err = None
+
+    def __exit__(self, *exc):
+        self._restore()
+        return False
 
 
 def cmd_baseline(raw_args: list):
@@ -1094,54 +1220,180 @@ def cmd_baseline(raw_args: list):
               "curve": {}, "soak": {}}
     sep = "═" * 68
 
-    print(f"Baseline for: {', '.join(MODELS[m]['label'] for m in target_models)}")
-    if run_speed:
-        pre = f"{args.cooldown}s idle → " if args.cooldown > 0 else ""
-        tail = f" → HumanEval ({args.languages})" if run_quality else ""
-        print(f"Mode:  TUNING — {pre}cold speed (curve + {args.soak_min:g}min soak){tail}")
-    else:
-        print(f"Mode:  COMPARE — HumanEval ({args.languages}) → accuracy + sustained tok/s")
-
-    for mk in target_models:
-        label = MODELS[mk]["label"]
-        alias = MODELS[mk]["alias"]
-        print(f"\n{sep}")
-        print(f"BASELINE   —   {label}")
-        print(sep)
-
-        # Stamp the active llama.cpp config so the result is self-documenting.
-        report["config"][mk] = read_model_config(mk)
-
-        # SPEED PHASE (--tuning only) — cold GPU first, so 'fresh' decode is honest;
-        # the soak then heats the chip to expose throttling.
-        if run_speed:
-            print(f"\n{'[1/2] ' if run_quality else ''}SPEED  —  cold GPU (tuning)")
-            if args.cooldown > 0:
-                cooldown(args.cooldown)
-            run_speed_for_model(mk, depths, args.gen_tokens, args.soak_min,
-                                args.soak_tokens, args.soak_context,
-                                not args.no_curve, not args.no_soak, report)
-
-        # QUALITY PHASE — HumanEval. Yields accuracy AND sustained tok/s (the two
-        # consistent comparison metrics), read back from its result files.
-        if run_quality:
-            print(f"\n{'[2/2] ' if run_speed else ''}QUALITY  —  HumanEval ({args.languages})"
-                  f"{f', first {args.limit}/lang' if args.limit else ''}")
-            cmd = [he_bin, "--language", args.languages, "--models", mk, "--quiet"]
-            if args.limit > 0:
-                cmd += ["--limit", str(args.limit)]
-            rc = subprocess.run(cmd).returncode
-            if rc != 0:
-                print(f"  note: llama-humaneval exited {rc} (some test failures are normal).")
-            report["quality"][mk] = humaneval_stats_by_lang(alias)
-
-        print_baseline_scorecard(mk, report, sep)
-
     ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     out_path = RESULTS_DIR / f"baseline-{ts}.json"
-    with out_path.open("w") as f:
-        json.dump(report, f, indent=2)
-    print(f"\nResults → {out_path}\n")
+    log_path = LOGS_DIR / f"baseline-{ts}.log"
+
+    # Auto-log everything (incl. the promptfoo subprocess) to a paired log file,
+    # while still showing on the terminal — no manual `| tee` needed.
+    with _TeeLog(log_path):
+        print(f"Log:   {log_path}")
+        print(f"Baseline for: {', '.join(MODELS[m]['label'] for m in target_models)}")
+        if run_speed:
+            pre = f"{args.cooldown}s idle → " if args.cooldown > 0 else ""
+            tail = f" → HumanEval ({args.languages})" if run_quality else ""
+            print(f"Mode:  TUNING — {pre}cold speed (curve + {args.soak_min:g}min soak){tail}")
+        else:
+            print(f"Mode:  COMPARE — HumanEval ({args.languages}) → accuracy + sustained tok/s")
+
+        try:
+            for mk in target_models:
+                label = MODELS[mk]["label"]
+                alias = MODELS[mk]["alias"]
+                print(f"\n{sep}")
+                print(f"BASELINE   —   {label}")
+                print(sep)
+
+                # Stamp the active llama.cpp config so the result is self-documenting.
+                report["config"][mk] = read_model_config(mk)
+
+                # SPEED PHASE (--tuning only) — cold GPU first, so 'fresh' decode is honest;
+                # the soak then heats the chip to expose throttling.
+                if run_speed:
+                    print(f"\n{'[1/2] ' if run_quality else ''}SPEED  —  cold GPU (tuning)")
+                    if args.cooldown > 0:
+                        cooldown(args.cooldown)
+                    run_speed_for_model(mk, depths, args.gen_tokens, args.soak_min,
+                                        args.soak_tokens, args.soak_context,
+                                        not args.no_curve, not args.no_soak, report)
+
+                # QUALITY PHASE — HumanEval. Yields accuracy AND sustained tok/s (the two
+                # consistent comparison metrics), read back from its result files.
+                if run_quality:
+                    print(f"\n{'[2/2] ' if run_speed else ''}QUALITY  —  HumanEval ({args.languages})"
+                          f"{f', first {args.limit}/lang' if args.limit else ''}")
+                    cmd = [he_bin, "--language", args.languages, "--models", mk, "--quiet"]
+                    if args.limit > 0:
+                        cmd += ["--limit", str(args.limit)]
+                    rc = run_cancellable(cmd)
+                    if rc != 0:
+                        print(f"  note: llama-humaneval exited {rc} (some test failures are normal).")
+                    report["quality"][mk] = humaneval_stats_by_lang(alias)
+
+                print_baseline_scorecard(mk, report, sep)
+        except KeyboardInterrupt:
+            # Ctrl-C: the child tree is already torn down by run_cancellable (or there
+            # was no child). Saving comes FIRST so a broken stdout can't lose data.
+            save_report(report, out_path)
+            try:
+                print(f"\n\n⚠ Cancelled by user. Child processes terminated.")
+                print(f"Partial results → {out_path}")
+                print(f"Log saved       → {log_path}\n")
+            except Exception:
+                pass
+            sys.exit(130)
+
+        save_report(report, out_path)
+        print(f"\nResults → {out_path}")
+        print(f"Log     → {log_path}\n")
+
+
+def cmd_rescore(raw_args: list):
+    """Rebuild a model's scorecard from already-saved HumanEval result files —
+    no GPU work. Lets us add/refine metrics (e.g. median) retroactively without
+    re-running an eval."""
+    parser = argparse.ArgumentParser(description="Regenerate scorecard(s) from saved results")
+    parser.add_argument("--models", help="Comma-separated (default: all known)")
+    args = parser.parse_args(raw_args)
+
+    target_models = ([m.strip() for m in args.models.split(",")] if args.models
+                     else list(MODELS.keys()))
+    invalid = [m for m in target_models if m not in MODELS]
+    if invalid:
+        sys.exit(f"Unknown models: {', '.join(invalid)}. Valid: {', '.join(MODELS)}")
+
+    sep = "═" * 68
+    shown = 0
+    for mk in target_models:
+        stats = humaneval_stats_by_lang(MODELS[mk]["alias"])
+        if not stats:
+            continue
+        report = {"config": {mk: read_model_config(mk)}, "quality": {mk: stats},
+                  "curve": {}, "soak": {}, "soak_stats": {}}
+        print_baseline_scorecard(mk, report, sep)
+        shown += 1
+    if shown == 0:
+        print("No saved HumanEval results found for the requested model(s).")
+
+
+def cmd_progress(raw_args: list):
+    """Live HumanEval progress from promptfoo's DB (read-only). Active-vs-idle is
+    decided by whether the completed count is *growing*, so a stale partial eval
+    left by a cancelled run shows as IDLE within a couple ticks (no false 'active')."""
+    import sqlite3
+    parser = argparse.ArgumentParser(description="Live HumanEval progress (read-only)")
+    parser.add_argument("--interval", type=float, default=5.0, help="refresh seconds")
+    parser.add_argument("--once", action="store_true", help="single snapshot (2-sample active check)")
+    args = parser.parse_args(raw_args)
+
+    db = Path.home() / ".promptfoo" / "promptfoo.db"
+
+    def snapshot():
+        if not db.exists():
+            return None
+        try:
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+        except sqlite3.Error:
+            return None
+        try:
+            cur = con.cursor()
+            cur.execute("SELECT eval_id FROM eval_results ORDER BY created_at DESC LIMIT 1")
+            r = cur.fetchone()
+            if not r:
+                return None
+            eid = r[0]
+            cur.execute(
+                "SELECT COUNT(*), COALESCE(SUM(success),0), "
+                "SUM(CASE WHEN failure_reason=1 THEN 1 ELSE 0 END), "
+                "SUM(CASE WHEN failure_reason=2 THEN 1 ELSE 0 END) "
+                "FROM eval_results WHERE eval_id=?", (eid,))
+            done, passed, fails, tos = cur.fetchone()
+            return {"eid": eid, "done": done, "passed": passed,
+                    "fails": fails or 0, "tos": tos or 0}
+        except sqlite3.Error:
+            return None
+        finally:
+            con.close()
+
+    def fmt(s, status):
+        completed = s["passed"] + s["fails"]
+        pct = (100.0 * s["passed"] / completed) if completed else 0.0
+        return (f"{s['eid'][:26]:<26}  done {s['done']:>3}  pass {s['passed']:>3}  "
+                f"fail {s['fails']:>2}  timeout {s['tos']:>2}  pass@1 {pct:4.1f}%   {status}")
+
+    if args.once:
+        a = snapshot()
+        if not a:
+            print("No eval data yet (no HumanEval run found).")
+            return
+        time.sleep(min(6.0, args.interval))
+        b = snapshot()
+        grew = b and b["eid"] == a["eid"] and b["done"] > a["done"]
+        print(fmt(b or a, "● ACTIVE" if grew else "○ idle (no new results)"))
+        return
+
+    prev, idle_ticks = None, 0
+    try:
+        while True:
+            s = snapshot()
+            if not s:
+                print("\rwaiting for an eval to start…           ", end="", flush=True)
+                time.sleep(args.interval)
+                continue
+            same = prev and s["eid"] == prev["eid"]
+            if same and s["done"] > prev["done"]:
+                rate = (s["done"] - prev["done"]) / args.interval * 60
+                status, idle_ticks = f"● ACTIVE (~{rate:.0f}/min)", 0
+            elif same and s["done"] == prev["done"]:
+                idle_ticks += 1
+                status = "○ IDLE (finished or cancelled)" if idle_ticks >= 2 else "● running…"
+            else:
+                status, idle_ticks = "● running…", 0
+            print("\r" + fmt(s, status) + "      ", end="", flush=True)
+            prev = s
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        print()
 
 
 def main():
@@ -1152,14 +1404,24 @@ def main():
     except Exception:
         pass
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    if cmd == "compare":
-        cmd_compare(sys.argv[2:])
-    elif cmd == "soak":
-        cmd_soak(sys.argv[2:])
-    elif cmd == "baseline":
-        cmd_baseline(sys.argv[2:])
-    else:
-        cmd_run(sys.argv[1:])
+    try:
+        if cmd == "compare":
+            cmd_compare(sys.argv[2:])
+        elif cmd == "soak":
+            cmd_soak(sys.argv[2:])
+        elif cmd == "baseline":
+            cmd_baseline(sys.argv[2:])
+        elif cmd == "progress":
+            cmd_progress(sys.argv[2:])
+        elif cmd == "rescore":
+            cmd_rescore(sys.argv[2:])
+        else:
+            cmd_run(sys.argv[1:])
+    except KeyboardInterrupt:
+        # baseline handles its own cleanup/save; this is the clean-exit fallback
+        # for the other commands (no Python traceback on Ctrl-C).
+        print("\n⚠ Cancelled.", flush=True)
+        sys.exit(130)
 
 
 if __name__ == "__main__":
