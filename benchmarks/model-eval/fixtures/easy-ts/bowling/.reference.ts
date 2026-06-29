@@ -1,0 +1,1 @@
+export class BowlingGame{r:number[]=[];roll(p:number){this.r.push(p);}score(){let s=0,i=0;for(let f=0;f<10;f++){if(this.r[i]===10){s+=10+(this.r[i+1]||0)+(this.r[i+2]||0);i++;}else if((this.r[i]||0)+(this.r[i+1]||0)===10){s+=10+(this.r[i+2]||0);i+=2;}else{s+=(this.r[i]||0)+(this.r[i+1]||0);i+=2;}}return s;}}

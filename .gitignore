@@ -5,3 +5,4 @@
 ghostty/.config/ghostty/themes/
 posh/.config/oh-my-posh/themes/
 llama/.local/bin/__pycache__/
+benchmarks/**/__pycache__/
