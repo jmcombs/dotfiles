@@ -7,9 +7,8 @@ case "$1" in
   gptoss)    log="/tmp/llama-gptoss.log"    ;;
   qwen36moe) log="/tmp/llama-qwen36moe.log" ;;
   glmflash)  log="/tmp/llama-glmflash.log"  ;;
-  glmair)    log="/tmp/llama-glmair.log"    ;;
   *)
-    echo "Usage: llama-log <qwen|gemma|ornith35b|gptoss|qwen36moe|glmflash|glmair>"
+    echo "Usage: llama-log <qwen|gemma|ornith35b|gptoss|qwen36moe|glmflash>"
     exit 1
     ;;
 esac
