@@ -40,7 +40,6 @@ MODELS = {
     "qwen":      {"port": 11434, "alias": "qwen3.6-27b-coding-optimized",   "label": "Qwen3.6-27B"},
     "gemma":     {"port": 11435, "alias": "gemma4-31b-coding-mtp-optimized", "label": "Gemma4-31B"},
     "qwen32":    {"port": 11436, "alias": "qwen3-32b-reasoning",             "label": "Qwen3-32B"},
-    "devstral":  {"port": 11437, "alias": "devstral-24b",                    "label": "Devstral-24B"},
     "ornith9b":  {"port": 11438, "alias": "ornith-1.0-9b",                  "label": "Ornith-1.0-9B"},
     "ornith35b": {"port": 11439, "alias": "ornith-1.0-35b-moe",             "label": "Ornith-1.0-35B-MoE"},
     "gptoss":    {"port": 11440, "alias": "gpt-oss-20b",                    "label": "gpt-oss-20B"},
@@ -488,7 +487,7 @@ def print_run_report(run_results: dict, target_models: list, has_scores: bool):
 
 def cmd_run(raw_args: list):
     parser = argparse.ArgumentParser(description="Run benchmark against local llama.cpp models")
-    parser.add_argument("--models", help="Comma-separated: qwen,gemma,qwen32,devstral (default: all running)")
+    parser.add_argument("--models", help="Comma-separated: qwen,ornith35b,qwen36moe (default: all running)")
     parser.add_argument("--categories", default="typescript,python")
     parser.add_argument("--runs", type=int, default=1, help="Timing runs per prompt for averaging")
     parser.add_argument("--speed-only", action="store_true", help="Skip quality scoring")

@@ -4,7 +4,6 @@ case "$1" in
   qwen)      log="/tmp/llama-qwen.log"      ;;
   gemma)     log="/tmp/llama-gemma.log"     ;;
   qwen32)    log="/tmp/llama-qwen32.log"    ;;
-  devstral)  log="/tmp/llama-devstral.log"  ;;
   ornith9b)  log="/tmp/llama-ornith9b.log"  ;;
   ornith35b) log="/tmp/llama-ornith35b.log" ;;
   gptoss)    log="/tmp/llama-gptoss.log"    ;;
@@ -13,7 +12,7 @@ case "$1" in
   glmflash)  log="/tmp/llama-glmflash.log"  ;;
   glmair)    log="/tmp/llama-glmair.log"    ;;
   *)
-    echo "Usage: llama-log <qwen|gemma|qwen32|devstral|ornith9b|ornith35b|gptoss|gptoss120|qwen36moe|glmflash|glmair>"
+    echo "Usage: llama-log <qwen|gemma|qwen32|ornith9b|ornith35b|gptoss|gptoss120|qwen36moe|glmflash|glmair>"
     exit 1
     ;;
 esac
