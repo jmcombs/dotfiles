@@ -1,0 +1,360 @@
+#!/usr/bin/env python3
+"""llama-agenteval — agentic eval for the pi orchestrator/builder seat.
+
+Unlike HumanEval (single-function completion), this measures the agentic loop:
+planning, real tool use (read/bash/edit/write), self-verification, and error
+recovery — driving the *real* pi harness headless (`pi -p --mode json`) over
+Aider polyglot exercises, scored by the exercise's own hidden tests.
+
+Two comparison modes:
+  - solo:         one model does the whole task (no delegation).
+  - orchestrated: an orchestrator model plans+verifies and delegates
+                  implementation to a `builder` subagent pinned to another
+                  model (via pi-subagents). Validated recipe: persisted session
+                  (--session-dir/--session-id) + builder `context: fresh`.
+
+Usage:
+  llama-agenteval --config solo-devstral --langs py --limit 5
+  llama-agenteval --config orch-devstral --langs py --limit 5
+  llama-agenteval report                       # rebuild scorecard from results
+  llama-agenteval --list                       # list configs / exercises
+
+Results: ~/.cache/llama-agenteval/results/<config>-<ts>.json
+"""
+import argparse, json, os, re, shutil, subprocess, sys, tempfile, time
+from datetime import datetime
+from pathlib import Path
+
+BENCH   = Path.home() / ".cache" / "llama-agenteval" / "polyglot-benchmark"
+RESULTS = Path.home() / ".cache" / "llama-agenteval" / "results"
+SANDBOX = Path.home() / ".cache" / "llama-agenteval" / "sandboxes"
+AGENTS_DIR = Path.home() / ".pi" / "agent" / "agents"
+
+# Orchestration configs. provider/model reference pi's models.json registry.
+# 'agents' lists subagents the orchestrator may delegate to (must exist as
+# ~/.pi/agent/agents/<name>.md pinned to a model). None = solo (no delegation).
+CONFIGS = {
+    "solo-devstral":  {"provider": "llama-devstral", "model": "devstral-small-2-24b",
+                        "thinking": "off", "agents": None,
+                        "label": "Solo Devstral-24B"},
+    "solo-ornith":    {"provider": "llama-ornith35b", "model": "ornith-1.0-35b-moe",
+                        "thinking": "high", "agents": None,
+                        "label": "Solo Ornith-35B"},
+    "solo-qwen":      {"provider": "llama-qwen", "model": "qwen3.6-27b-coding-optimized",
+                        "thinking": "high", "agents": None,
+                        "label": "Solo Qwen3.6-27B"},
+    # Orchestrated: reasoning orchestrator delegates building to Devstral.
+    "orch-ornith-devstral": {"provider": "llama-ornith35b", "model": "ornith-1.0-35b-moe",
+                        "thinking": "high", "agents": ["builder"],
+                        "label": "Ornith-35B orch -> Devstral builder"},
+    # Devstral-only orchestrated (pipeline validation, not a real multi-model test).
+    "orch-devstral":  {"provider": "llama-devstral", "model": "devstral-small-2-24b",
+                        "thinking": "off", "agents": ["builder"],
+                        "label": "Devstral orch -> Devstral builder"},
+}
+
+LANG_DIR = {"py": "python", "js": "javascript"}
+PI_TIMEOUT = 1200   # seconds per task; covers legit deep reasoning (Ornith book-store
+                    # took ~1095s and passed) while still bounding true hangs at 20 min.
+                    # TODO: idle-watchdog (kill if no model activity N min) would be tighter.
+
+
+# ----------------------------------------------------------------------------
+# Exercise loading
+# ----------------------------------------------------------------------------
+def load_exercises(lang, limit):
+    root = BENCH / LANG_DIR[lang] / "exercises" / "practice"
+    if not root.is_dir():
+        sys.exit(f"missing benchmark dir: {root}\n  clone Aider-AI/polyglot-benchmark first.")
+    names = sorted(p.name for p in root.iterdir() if p.is_dir())
+    if limit:
+        names = names[:limit]
+    out = []
+    for name in names:
+        ex = root / name
+        cfg = json.loads((ex / ".meta" / "config.json").read_text())
+        files = cfg.get("files", {})
+        sol = files.get("solution", [])
+        tst = files.get("test", [])
+        if not sol or not tst:
+            continue
+        instr = ""
+        for doc in ("instructions.md", "instructions.append.md"):
+            p = ex / ".docs" / doc
+            if p.exists():
+                instr += p.read_text() + "\n\n"
+        out.append({"name": name, "lang": lang, "dir": ex,
+                    "solution": sol, "test": tst, "instructions": instr.strip()})
+    return out
+
+
+# ----------------------------------------------------------------------------
+# Sandbox + prompt
+# ----------------------------------------------------------------------------
+def make_sandbox(ex):
+    SANDBOX.mkdir(parents=True, exist_ok=True)
+    sb = Path(tempfile.mkdtemp(prefix=f"{ex['lang']}-{ex['name']}-", dir=SANDBOX))
+    # Copy solution stub + test + any support files (everything except .meta/.docs).
+    for item in ex["dir"].iterdir():
+        if item.name in (".meta", ".docs"):
+            continue
+        dst = sb / item.name
+        if item.is_dir():
+            shutil.copytree(item, dst)
+        else:
+            shutil.copy2(item, dst)
+    # Preserve pristine test files for anti-tamper restore at scoring time.
+    pristine = {}
+    for t in ex["test"]:
+        tp = sb / t
+        if tp.exists():
+            pristine[t] = tp.read_text()
+    subprocess.run(["git", "init", "-q"], cwd=sb, check=False)
+    return sb, pristine
+
+
+def build_task_prompt(ex):
+    sol = ", ".join(ex["solution"])
+    tst = ", ".join(ex["test"])
+    return (
+        f"{ex['instructions']}\n\n"
+        f"---\n"
+        f"Implement your solution in: {sol}\n"
+        f"The hidden test file(s) are: {tst} — DO NOT modify them.\n"
+        f"Make all tests pass. Run the tests yourself to verify before finishing.\n"
+        f"Test command: " + ("python3 -m unittest -v" if ex['lang']=='py'
+                              else "npm test") + "\n"
+    )
+
+
+ORCH_POLICY = (
+    "You are the ORCHESTRATOR. Do not write solution code yourself. "
+    "Plan the solution, then delegate the implementation to the `builder` "
+    "subagent via the subagent tool, giving it a concrete task and the exact "
+    "file(s) to write. After it returns, run the tests yourself to verify; if "
+    "they fail, delegate a focused fix to the builder. You own planning and "
+    "verification; the builder owns writing code."
+)
+
+
+# ----------------------------------------------------------------------------
+# Run pi headless
+# ----------------------------------------------------------------------------
+def run_pi(ex, sb, config):
+    sess = sb / ".pisession"
+    cmd = ["pi", "-p", "--mode", "json",
+           "--session-dir", str(sess), "--session-id", "task",
+           "--provider", config["provider"], "--model", config["model"],
+           "--thinking", config["thinking"],
+           "-t", "read,bash,edit,write" + (",subagent" if config["agents"] else "")]
+    # Deliver the orchestration directive in the USER prompt — models follow the
+    # task message over an appended system prompt (validated: system-prompt
+    # delegation was ignored; user-prompt delegation fires reliably).
+    task = build_task_prompt(ex)
+    if config["agents"]:
+        task = ORCH_POLICY + "\n\n---\n\n" + task
+    cmd += [task]
+    t0 = time.time()
+    try:
+        proc = subprocess.run(cmd, cwd=sb, capture_output=True, text=True,
+                              timeout=PI_TIMEOUT)
+        timed_out = False
+    except subprocess.TimeoutExpired as e:
+        proc = e
+        timed_out = True
+    wall = time.time() - t0
+    raw = getattr(proc, "stdout", "") or ""       # TimeoutExpired.stdout may be bytes
+    out = raw.decode("utf-8", "replace") if isinstance(raw, (bytes, bytearray)) else raw
+    (sb / "pi-out.json").write_text(out)
+    return out, wall, timed_out
+
+
+# ----------------------------------------------------------------------------
+# Scoring: hidden tests + JSONL metrics
+# ----------------------------------------------------------------------------
+def run_tests(ex, sb, pristine):
+    for t, content in pristine.items():          # anti-tamper restore
+        (sb / t).write_text(content)
+    if ex["lang"] == "py":
+        mods = [t[:-3] for t in ex["test"] if t.endswith(".py")]
+        r = subprocess.run(["python3", "-m", "unittest", "-v", *mods],
+                           cwd=sb, capture_output=True, text=True, timeout=300)
+        return r.returncode == 0, (r.stderr or r.stdout)[-600:]
+    else:  # js
+        subprocess.run(["npm", "install", "--silent", "--no-audit", "--no-fund"],
+                      cwd=sb, capture_output=True, text=True, timeout=600)
+        r = subprocess.run(["npm", "test"], cwd=sb, capture_output=True,
+                          text=True, timeout=300)
+        return r.returncode == 0, (r.stderr or r.stdout)[-600:]
+
+
+def parse_events(out):
+    ev = []
+    for line in out.splitlines():
+        line = line.strip()
+        if line:
+            try: ev.append(json.loads(line))
+            except Exception: pass
+    return ev
+
+
+def metrics_from_events(ev, ex):
+    turns = sum(1 for e in ev if e.get("type") == "turn_start")
+    starts = [e for e in ev if e.get("type") == "tool_execution_start"]
+    ends   = [e for e in ev if e.get("type") == "tool_execution_end"]
+    tool_counts = {}
+    for e in starts:
+        tool_counts[e.get("toolName")] = tool_counts.get(e.get("toolName"), 0) + 1
+    tool_errors = sum(1 for e in ends if e.get("isError"))
+    delegations = [e for e in starts if e.get("toolName") == "subagent"]
+    # self-verification: did the agent run the test command via bash?
+    testcmd = "unittest" if ex["lang"] == "py" else "jest"
+    self_verified = any(
+        e.get("toolName") == "bash" and testcmd in json.dumps(e.get("args", {}))
+        for e in starts)
+    # tokens: max accumulated totalTokens seen on assistant messages
+    tokens = 0
+    for e in ev:
+        for m in (e.get("message"), (e.get("assistantMessageEvent") or {}).get("partial")):
+            if isinstance(m, dict):
+                u = m.get("usage") or {}
+                tokens = max(tokens, u.get("totalTokens", 0) or 0)
+    return {"turns": turns, "tool_counts": tool_counts, "tool_calls": len(starts),
+            "tool_errors": tool_errors, "delegations": len(delegations),
+            "self_verified": self_verified, "tokens": tokens}
+
+
+# ----------------------------------------------------------------------------
+# Commands
+# ----------------------------------------------------------------------------
+def cmd_run(args):
+    if args.config not in CONFIGS:
+        sys.exit(f"unknown config '{args.config}'. valid: {', '.join(CONFIGS)}")
+    config = CONFIGS[args.config]
+    langs = args.langs.split(",")
+    exercises = []
+    for lang in langs:
+        exercises += load_exercises(lang, args.limit)
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+
+    print(f"Config:    {config['label']}  ({config['provider']}/{config['model']}, "
+          f"thinking={config['thinking']}, agents={config['agents'] or 'none'})")
+    print(f"Exercises: {len(exercises)}  ({', '.join(langs)})\n")
+
+    rows = []
+    report = {"config": args.config, "config_detail": config, "timestamp": ts,
+              "langs": langs, "limit": args.limit, "results": rows}
+    path = RESULTS / f"{args.config}-{ts}.json"
+
+    for i, ex in enumerate(exercises, 1):
+        print(f"[{i}/{len(exercises)}] {ex['lang']}/{ex['name']} ... ", end="", flush=True)
+        sb = None
+        try:
+            sb, pristine = make_sandbox(ex)
+            out, wall, timed_out = run_pi(ex, sb, config)
+            ev = parse_events(out)
+            m = metrics_from_events(ev, ex)
+            try:
+                passed, test_tail = run_tests(ex, sb, pristine)
+            except Exception as e:
+                passed, test_tail = False, f"scoring error: {e}"
+            row = {"exercise": ex["name"], "lang": ex["lang"], "passed": passed,
+                   "timed_out": timed_out, "wall_s": round(wall, 1), **m,
+                   "sandbox": str(sb), "test_tail": test_tail}
+            flag = "TIMEOUT " if timed_out else ""
+            verdict = "PASS" if passed else "fail"
+            deleg = f" deleg={m['delegations']}" if config["agents"] else ""
+            print(f"{flag}{verdict}  {wall:5.0f}s turns={m['turns']} "
+                  f"tools={m['tool_calls']} err={m['tool_errors']}{deleg} "
+                  f"verify={'Y' if m['self_verified'] else 'n'}")
+        except Exception as e:                       # never let one exercise kill the run
+            row = {"exercise": ex["name"], "lang": ex["lang"], "passed": False,
+                   "timed_out": False, "wall_s": 0, "turns": 0, "tool_counts": {},
+                   "tool_calls": 0, "tool_errors": 0, "delegations": 0,
+                   "self_verified": False, "tokens": 0,
+                   "sandbox": str(sb) if sb else "", "error": repr(e)}
+            print(f"ERROR {e!r}")
+        rows.append(row)
+        path.write_text(json.dumps(report, indent=2))   # incremental save (crash-safe)
+
+    print()
+    print_scorecard([report])
+    print(f"\nSaved -> {path}")
+    if not args.keep_sandboxes:
+        for r in rows:
+            shutil.rmtree(r["sandbox"], ignore_errors=True)
+
+
+def print_scorecard(reports):
+    print("=" * 92)
+    print(f"  AGENTIC SCORECARD")
+    print("=" * 92)
+    hdr = (f"  {'config':<34}{'n':>3}{'pass@1':>8}{'wall':>7}{'turns':>7}"
+           f"{'tokens':>8}{'deleg':>7}{'verify':>8}{'toolerr':>8}")
+    print(hdr)
+    print("  " + "-" * 88)
+    for rep in reports:
+        rows = rep["results"]
+        n = len(rows)
+        if not n:
+            continue
+        npass = sum(1 for r in rows if r["passed"])
+        avg = lambda k: sum(r[k] for r in rows) / n
+        verify_rate = sum(1 for r in rows if r["self_verified"]) / n * 100
+        deleg_total = sum(r["delegations"] for r in rows)
+        toolerr = sum(r["tool_errors"] for r in rows)
+        print(f"  {rep['config_detail']['label']:<34}{n:>3}{npass/n*100:>7.0f}%"
+              f"{avg('wall_s'):>6.0f}s{avg('turns'):>7.1f}{avg('tokens'):>8.0f}"
+              f"{deleg_total:>7}{verify_rate:>7.0f}%{toolerr:>8}")
+    print("=" * 92)
+    print("  pass@1=hidden tests pass | wall/turns/tokens=avg per task | "
+          "deleg=subagent calls\n  verify=ran tests itself before finishing | "
+          "toolerr=total failed tool calls")
+
+
+def cmd_report(args):
+    reports = []
+    for p in sorted(RESULTS.glob("*.json")):
+        try: reports.append(json.loads(p.read_text()))
+        except Exception: pass
+    if not reports:
+        sys.exit("no results in " + str(RESULTS))
+    print_scorecard(reports)
+
+
+def cmd_list(args):
+    print("CONFIGS:")
+    for k, c in CONFIGS.items():
+        print(f"  {k:<24} {c['label']}")
+    print("\nLANGS: py (python, unittest), js (javascript, jest)")
+    for lang in ("py", "js"):
+        root = BENCH / LANG_DIR[lang] / "exercises" / "practice"
+        n = len([p for p in root.iterdir() if p.is_dir()]) if root.is_dir() else 0
+        print(f"  {lang}: {n} exercises")
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Agentic eval for pi orchestrator/builder models")
+    sub = ap.add_subparsers(dest="cmd")
+    ap.add_argument("--config", help="orchestration config (see --list)")
+    ap.add_argument("--langs", default="py", help="comma list: py,js")
+    ap.add_argument("--limit", type=int, default=5, help="exercises per language")
+    ap.add_argument("--keep-sandboxes", action="store_true")
+    ap.add_argument("--list", action="store_true")
+    sub.add_parser("report")
+    sub.add_parser("list")
+    args = ap.parse_args()
+
+    if args.cmd == "report":
+        return cmd_report(args)
+    if args.cmd == "list" or args.list:
+        return cmd_list(args)
+    if not args.config:
+        ap.print_help()
+        return
+    cmd_run(args)
+
+
+if __name__ == "__main__":
+    main()
