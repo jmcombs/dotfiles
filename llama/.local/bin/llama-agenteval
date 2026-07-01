@@ -14,8 +14,8 @@ Two comparison modes:
                   (--session-dir/--session-id) + builder `context: fresh`.
 
 Usage:
-  llama-agenteval --config solo-devstral --langs py --limit 5
-  llama-agenteval --config orch-devstral --langs py --limit 5
+  llama-agenteval --config solo-ornith --langs py --limit 5
+  llama-agenteval --config orch-ornith --langs py --limit 5
   llama-agenteval report                       # rebuild scorecard from results
   llama-agenteval --list                       # list configs / exercises
 
@@ -34,23 +34,16 @@ AGENTS_DIR = Path.home() / ".pi" / "agent" / "agents"
 # 'agents' lists subagents the orchestrator may delegate to (must exist as
 # ~/.pi/agent/agents/<name>.md pinned to a model). None = solo (no delegation).
 CONFIGS = {
-    "solo-devstral":  {"provider": "llama-devstral", "model": "devstral-small-2-24b",
-                        "thinking": "off", "agents": None,
-                        "label": "Solo Devstral-24B"},
     "solo-ornith":    {"provider": "llama-ornith35b", "model": "ornith-1.0-35b-moe",
                         "thinking": "high", "agents": None,
                         "label": "Solo Ornith-35B"},
     "solo-qwen":      {"provider": "llama-qwen", "model": "qwen3.6-27b-coding-optimized",
                         "thinking": "high", "agents": None,
                         "label": "Solo Qwen3.6-27B"},
-    # Orchestrated: reasoning orchestrator delegates building to Devstral.
-    "orch-ornith-devstral": {"provider": "llama-ornith35b", "model": "ornith-1.0-35b-moe",
+    # Orchestrated: reasoning orchestrator delegates building to the builder subagent.
+    "orch-ornith":    {"provider": "llama-ornith35b", "model": "ornith-1.0-35b-moe",
                         "thinking": "high", "agents": ["builder"],
-                        "label": "Ornith-35B orch -> Devstral builder"},
-    # Devstral-only orchestrated (pipeline validation, not a real multi-model test).
-    "orch-devstral":  {"provider": "llama-devstral", "model": "devstral-small-2-24b",
-                        "thinking": "off", "agents": ["builder"],
-                        "label": "Devstral orch -> Devstral builder"},
+                        "label": "Ornith-35B orch -> builder"},
 }
 
 LANG_DIR = {"py": "python", "js": "javascript"}
