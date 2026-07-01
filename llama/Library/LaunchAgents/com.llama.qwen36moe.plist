@@ -28,11 +28,13 @@
     <string>q8_0</string>
     <string>--jinja</string>
     <string>--temp</string>
-    <string>0.7</string>
+    <string>0.6</string>
     <string>--top-k</string>
     <string>20</string>
     <string>--top-p</string>
-    <string>0.8</string>
+    <string>0.95</string>
+    <string>--min-p</string>
+    <string>0.0</string>
     <string>--parallel</string>
     <string>1</string>
     <string>--host</string>
