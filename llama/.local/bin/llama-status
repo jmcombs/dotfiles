@@ -8,7 +8,6 @@ servers=(
   "11439:ornith35b:Ornith-1.0-35B-MoE"
   "11440:gptoss:gpt-oss-20b"
   "11441:qwen36moe:Qwen3.6-35B-A3B"
-  "11442:gptoss120:gpt-oss-120b"
   "11443:glmflash:GLM-4.7-Flash"
   "11444:glmair:GLM-4.5-Air"
 )
