@@ -1,0 +1,11 @@
+import { test } from "node:test"; import assert from "node:assert";
+import { isMatch as f } from "../src/glob-match.ts";
+test("exact", () => assert.strictEqual(f("abc","abc"), true));
+test("question", () => assert.strictEqual(f("abc","a?c"), true));
+test("star", () => assert.strictEqual(f("abcde","a*e"), true));
+test("star empty", () => assert.strictEqual(f("ae","a*e"), true));
+test("leading star", () => assert.strictEqual(f("abc","*c"), true));
+test("only star", () => assert.strictEqual(f("","*"), true));
+test("no match", () => assert.strictEqual(f("abc","a?d"), false));
+test("multi star", () => assert.strictEqual(f("mississippi","m*ss*p?"), true));
+test("empty pattern", () => assert.strictEqual(f("a",""), false));
