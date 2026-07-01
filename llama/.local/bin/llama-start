@@ -8,8 +8,13 @@ case "$1" in
   devstral)   label="com.llama.devstral"   ;;
   ornith9b)   label="com.llama.ornith9b"   ;;
   ornith35b)  label="com.llama.ornith35b"  ;;
+  gptoss)     label="com.llama.gptoss"     ;;
+  gptoss120)  label="com.llama.gptoss120"  ;;
+  qwen36moe)  label="com.llama.qwen36moe"  ;;
+  glmflash)   label="com.llama.glmflash"   ;;
+  glmair)     label="com.llama.glmair"     ;;
   *)
-    echo "Usage: llama-start <qwen|gemma|qwen32|devstral|ornith9b|ornith35b>"
+    echo "Usage: llama-start <qwen|gemma|qwen32|devstral|ornith9b|ornith35b|gptoss|gptoss120|qwen36moe|glmflash|glmair>"
     exit 1
     ;;
 esac

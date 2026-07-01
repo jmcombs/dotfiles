@@ -7,8 +7,13 @@ case "$1" in
   devstral)  log="/tmp/llama-devstral.log"  ;;
   ornith9b)  log="/tmp/llama-ornith9b.log"  ;;
   ornith35b) log="/tmp/llama-ornith35b.log" ;;
+  gptoss)    log="/tmp/llama-gptoss.log"    ;;
+  gptoss120) log="/tmp/llama-gptoss120.log" ;;
+  qwen36moe) log="/tmp/llama-qwen36moe.log" ;;
+  glmflash)  log="/tmp/llama-glmflash.log"  ;;
+  glmair)    log="/tmp/llama-glmair.log"    ;;
   *)
-    echo "Usage: llama-log <qwen|gemma|qwen32|devstral|ornith9b|ornith35b>"
+    echo "Usage: llama-log <qwen|gemma|qwen32|devstral|ornith9b|ornith35b|gptoss|gptoss120|qwen36moe|glmflash|glmair>"
     exit 1
     ;;
 esac
