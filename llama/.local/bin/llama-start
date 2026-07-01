@@ -7,9 +7,8 @@ case "$1" in
   ornith35b)  label="com.llama.ornith35b"  ;;
   gptoss)     label="com.llama.gptoss"     ;;
   qwen36moe)  label="com.llama.qwen36moe"  ;;
-  glmflash)   label="com.llama.glmflash"   ;;
   *)
-    echo "Usage: llama-start <qwen|gemma|ornith35b|gptoss|qwen36moe|glmflash>"
+    echo "Usage: llama-start <qwen|gemma|ornith35b|gptoss|qwen36moe>"
     exit 1
     ;;
 esac
