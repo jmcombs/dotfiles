@@ -1,0 +1,12 @@
+{
+  "shellPath": "/bin/zsh",
+  "defaultProvider": "llama-qwen36moe",
+  "defaultModel": "qwen3.6-35b-a3b",
+  "defaultThinkingLevel": "high",
+  "packages": [
+    "npm:pi-subagents"
+  ],
+  "subagents": {
+    "disableBuiltins": true
+  }
+}
