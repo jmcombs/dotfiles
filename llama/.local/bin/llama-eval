@@ -43,7 +43,6 @@ MODELS = {
     "gptoss":    {"port": 11440, "alias": "gpt-oss-20b",                    "label": "gpt-oss-20B"},
     "qwen36moe": {"port": 11441, "alias": "qwen3.6-35b-a3b",               "label": "Qwen3.6-35B-A3B"},
     "glmflash":  {"port": 11443, "alias": "glm-4.7-flash",                 "label": "GLM-4.7-Flash"},
-    "glmair":    {"port": 11444, "alias": "glm-4.5-air",                   "label": "GLM-4.5-Air"},
 }
 
 JUDGE_KEY = "qwen36moe"

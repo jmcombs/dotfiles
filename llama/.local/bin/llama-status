@@ -7,7 +7,6 @@ servers=(
   "11440:gptoss:gpt-oss-20b"
   "11441:qwen36moe:Qwen3.6-35B-A3B"
   "11443:glmflash:GLM-4.7-Flash"
-  "11444:glmair:GLM-4.5-Air"
 )
 
 for entry in $servers; do

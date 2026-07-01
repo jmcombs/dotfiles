@@ -40,6 +40,9 @@ CONFIGS = {
     "solo-qwen":      {"provider": "llama-qwen", "model": "qwen3.6-27b-coding-optimized",
                         "thinking": "high", "agents": None,
                         "label": "Solo Qwen3.6-27B"},
+    "solo-glmflash":  {"provider": "llama-glmflash", "model": "glm-4.7-flash",
+                        "thinking": "high", "agents": None,
+                        "label": "Solo GLM-4.7-Flash"},
     # Orchestrated: reasoning orchestrator delegates building to the builder subagent.
     "orch-ornith":    {"provider": "llama-ornith35b", "model": "ornith-1.0-35b-moe",
                         "thinking": "high", "agents": ["builder"],
