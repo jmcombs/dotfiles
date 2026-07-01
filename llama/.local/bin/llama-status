@@ -3,7 +3,6 @@
 servers=(
   "11434:qwen:Qwen3.6-27B"
   "11435:gemma:Gemma4-31B"
-  "11436:qwen32:Qwen3-32B"
   "11439:ornith35b:Ornith-1.0-35B-MoE"
   "11440:gptoss:gpt-oss-20b"
   "11441:qwen36moe:Qwen3.6-35B-A3B"

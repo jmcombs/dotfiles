@@ -3,14 +3,13 @@
 case "$1" in
   qwen)      log="/tmp/llama-qwen.log"      ;;
   gemma)     log="/tmp/llama-gemma.log"     ;;
-  qwen32)    log="/tmp/llama-qwen32.log"    ;;
   ornith35b) log="/tmp/llama-ornith35b.log" ;;
   gptoss)    log="/tmp/llama-gptoss.log"    ;;
   qwen36moe) log="/tmp/llama-qwen36moe.log" ;;
   glmflash)  log="/tmp/llama-glmflash.log"  ;;
   glmair)    log="/tmp/llama-glmair.log"    ;;
   *)
-    echo "Usage: llama-log <qwen|gemma|qwen32|ornith35b|gptoss|qwen36moe|glmflash|glmair>"
+    echo "Usage: llama-log <qwen|gemma|ornith35b|gptoss|qwen36moe|glmflash|glmair>"
     exit 1
     ;;
 esac

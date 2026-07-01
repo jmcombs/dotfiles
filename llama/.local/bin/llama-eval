@@ -39,7 +39,6 @@ LOGS_DIR = Path.home() / ".cache" / "llama-bench" / "logs"
 MODELS = {
     "qwen":      {"port": 11434, "alias": "qwen3.6-27b-coding-optimized",   "label": "Qwen3.6-27B"},
     "gemma":     {"port": 11435, "alias": "gemma4-31b-coding-mtp-optimized", "label": "Gemma4-31B"},
-    "qwen32":    {"port": 11436, "alias": "qwen3-32b-reasoning",             "label": "Qwen3-32B"},
     "ornith35b": {"port": 11439, "alias": "ornith-1.0-35b-moe",             "label": "Ornith-1.0-35B-MoE"},
     "gptoss":    {"port": 11440, "alias": "gpt-oss-20b",                    "label": "gpt-oss-20B"},
     "qwen36moe": {"port": 11441, "alias": "qwen3.6-35b-a3b",               "label": "Qwen3.6-35B-A3B"},
@@ -47,7 +46,7 @@ MODELS = {
     "glmair":    {"port": 11444, "alias": "glm-4.5-air",                   "label": "GLM-4.5-Air"},
 }
 
-JUDGE_KEY = "qwen32"
+JUDGE_KEY = "qwen36moe"
 
 JUDGE_SOLO_SYSTEM = (
     "You are a strict code quality judge. Evaluate the AI response based on: "
@@ -442,7 +441,7 @@ def print_run_report(run_results: dict, target_models: list, has_scores: bool):
         print(row)
 
     if has_scores:
-        print(f"\nQUALITY  (Qwen3-32B judge, /10)")
+        print(f"\nQUALITY  ({MODELS[JUDGE_KEY]['label']} judge, /10)")
         print(header)
         print(sep)
         for pid, data in run_results["prompts"].items():
@@ -506,7 +505,7 @@ def cmd_run(raw_args: list):
 
     run_quality = not args.speed_only and is_running(MODELS[JUDGE_KEY]["port"])
     if not args.speed_only and not run_quality:
-        print(f"Judge:       not running — skipping quality scoring (llama-start qwen32 to enable)")
+        print(f"Judge:       not running — skipping quality scoring (llama-start qwen36moe to enable)")
     elif run_quality:
         print(f"Judge:       {MODELS[JUDGE_KEY]['label']} (:{MODELS[JUDGE_KEY]['port']})")
 
@@ -599,7 +598,7 @@ def cmd_compare(raw_args: list):
 
     run_quality = not args.speed_only and is_running(MODELS[JUDGE_KEY]["port"])
     if not args.speed_only and not run_quality:
-        print("Judge not running — showing speed comparison only (llama-start qwen32 to enable)")
+        print("Judge not running — showing speed comparison only (llama-start qwen36moe to enable)")
 
     sep = "─" * 72
     print(f"\n{sep}")
@@ -654,7 +653,7 @@ def cmd_compare(raw_args: list):
                               get_content(res_a, pid), get_content(res_b, pid)))
 
     if run_quality and h2h_queue:
-        print(f"\nQUALITY  (head-to-head, Qwen3-32B judge)")
+        print(f"\nQUALITY  (head-to-head, {MODELS[JUDGE_KEY]['label']} judge)")
         print(f"  {'Prompt':<36}  {'Winner':>8}  Reason")
         print(sep)
 
