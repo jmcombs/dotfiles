@@ -19,7 +19,10 @@ case "$1" in
     ;;
 esac
 
-plist="$HOME/Library/LaunchAgents/$label.plist"
-launchctl stop "$label" 2>/dev/null || true
-launchctl unload "$plist" 2>/dev/null || true
+domain="gui/$(id -u)"
+
+# Modern launchctl API: bootout stops the process AND removes the job in one
+# reliable step (blocks until the process exits), unlike the legacy stop+unload
+# which could silently fail and leave a stale cached job with old settings.
+launchctl bootout "$domain/$label" 2>/dev/null || true
 echo "Stopped $label"
