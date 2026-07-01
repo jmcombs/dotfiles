@@ -27,6 +27,12 @@
     <string>--cache-type-v</string>
     <string>q8_0</string>
     <string>--jinja</string>
+    <string>--temp</string>
+    <string>0.6</string>
+    <string>--top-p</string>
+    <string>0.95</string>
+    <string>--min-p</string>
+    <string>0.01</string>
     <string>--parallel</string>
     <string>1</string>
     <string>--host</string>

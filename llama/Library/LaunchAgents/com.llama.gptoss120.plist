@@ -29,6 +29,12 @@
     <string>--jinja</string>
     <string>--reasoning-format</string>
     <string>auto</string>
+    <string>--temp</string>
+    <string>1.0</string>
+    <string>--top-p</string>
+    <string>1.0</string>
+    <string>--min-p</string>
+    <string>0.0</string>
     <string>--parallel</string>
     <string>1</string>
     <string>--host</string>
