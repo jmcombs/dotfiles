@@ -1,0 +1,43 @@
+#!/bin/zsh
+#
+# pi-phaseloop — launch pi in phase-loop ORCHESTRATOR mode.
+#
+#   manager  : Qwen3.6-35B-A3B (defaultModel in the profile settings)
+#   roster   : only builder / verifier / planner (subagents.disableBuiltins hides
+#              the bundled helper agents that otherwise derail dispatch)
+#   tools    : locked to `subagent` (the manager coordinates, never executes)
+#   skill    : phase-orchestrate (the build->verify->remediate loop)
+#
+# Your normal `pi` (~/.pi/agent) is untouched — this runs in an isolated profile
+# dir (~/.pi/phaseloop) selected via PI_CODING_AGENT_DIR.
+#
+# Usage:
+#   pi-phaseloop "Orchestrate Phase 1 of PLAN.md to completion."   # one-shot-ish
+#   pi-phaseloop                                                    # interactive
+#
+set -e
+
+PHASE_DIR="$HOME/.pi/phaseloop"
+CONFIG_SRC="$HOME/.local/share/pi-phaseloop/settings.json"
+AGENT="$HOME/.pi/agent"
+
+if [[ ! -e "$CONFIG_SRC" ]]; then
+  echo "pi-phaseloop: missing profile settings at $CONFIG_SRC (is the 'pi' stow package linked?)" >&2
+  exit 1
+fi
+
+# Build the profile dir as a REAL local dir so pi's runtime writes (sessions, npm)
+# stay here and never touch the dotfiles repo. Config + agents/skills/models are
+# symlinked from the live agent config, so there is a single source of truth.
+mkdir -p "$PHASE_DIR/npm/node_modules"
+ln -sfn "$CONFIG_SRC"        "$PHASE_DIR/settings.json"
+ln -sfn "$AGENT/agents"      "$PHASE_DIR/agents"
+ln -sfn "$AGENT/skills"      "$PHASE_DIR/skills"
+ln -sfn "$AGENT/models.json" "$PHASE_DIR/models.json"
+# Reuse the agent's pi-subagents install (v0.31.0) so the profile doesn't fall
+# back to an older globally-installed copy. Isolated symlink = no risk to the
+# main install and nothing else to prune (the profile only wants this one pkg).
+ln -sfn "$AGENT/npm/node_modules/pi-subagents" "$PHASE_DIR/npm/node_modules/pi-subagents"
+
+exec env PI_CODING_AGENT_DIR="$PHASE_DIR" \
+  pi --skill "$PHASE_DIR/skills/phase-orchestrate" -t subagent "$@"
