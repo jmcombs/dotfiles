@@ -1,0 +1,8 @@
+# Global git ignore (core.excludesFile default: ~/.config/git/ignore)
+
+# Editor / tool local settings
+**/.claude/settings.local.json
+
+# pi agent-harness output — never belongs in any project repo
+.pi-subagents/
+.pi/
