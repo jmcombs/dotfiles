@@ -1,11 +1,12 @@
 #!/bin/zsh
 
 servers=(
-  "11434:qwen:Qwen3.6-27B"
-  "11435:gemma:Gemma4-31B"
-  "11439:ornith35b:Ornith-1.0-35B-MoE"
-  "11440:gptoss:gpt-oss-20b"
-  "11441:qwen36moe:Qwen3.6-35B-A3B"
+  "11434:gemma:Gemma4-31B"
+  "11435:gemmamoe:Gemma4-26B-A4B"
+  "11436:gptoss:gpt-oss-20b"
+  "11437:ornith35b:Ornith-1.0-35B-MoE"
+  "11438:qwen:Qwen3.6-27B"
+  "11439:qwen36moe:Qwen3.6-35B-A3B"
 )
 
 for entry in $servers; do

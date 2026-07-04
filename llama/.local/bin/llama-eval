@@ -37,11 +37,11 @@ RESULTS_DIR = Path.home() / ".cache" / "llama-bench" / "results"
 LOGS_DIR = Path.home() / ".cache" / "llama-bench" / "logs"
 
 MODELS = {
-    "qwen":      {"port": 11434, "alias": "qwen3.6-27b-coding-optimized",   "label": "Qwen3.6-27B"},
-    "gemma":     {"port": 11435, "alias": "gemma4-31b-coding-mtp-optimized", "label": "Gemma4-31B"},
-    "ornith35b": {"port": 11439, "alias": "ornith-1.0-35b-moe",             "label": "Ornith-1.0-35B-MoE"},
-    "gptoss":    {"port": 11440, "alias": "gpt-oss-20b",                    "label": "gpt-oss-20B"},
-    "qwen36moe": {"port": 11441, "alias": "qwen3.6-35b-a3b",               "label": "Qwen3.6-35B-A3B"},
+    "qwen":      {"port": 11438, "alias": "qwen3.6-27b-coding-optimized",   "label": "Qwen3.6-27B"},
+    "gemma":     {"port": 11434, "alias": "gemma4-31b-coding-mtp-optimized", "label": "Gemma4-31B"},
+    "ornith35b": {"port": 11437, "alias": "ornith-1.0-35b-moe",             "label": "Ornith-1.0-35B-MoE"},
+    "gptoss":    {"port": 11436, "alias": "gpt-oss-20b",                    "label": "gpt-oss-20B"},
+    "qwen36moe": {"port": 11439, "alias": "qwen3.6-35b-a3b",               "label": "Qwen3.6-35B-A3B"},
 }
 
 JUDGE_KEY = "qwen36moe"

@@ -35,7 +35,7 @@
     <string>--host</string>
     <string>127.0.0.1</string>
     <string>--port</string>
-    <string>11434</string>
+    <string>11438</string>
   </array>
 
   <key>RunAtLoad</key>
