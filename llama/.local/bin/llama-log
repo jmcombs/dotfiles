@@ -1,13 +1,14 @@
 #!/bin/zsh
 
 case "$1" in
-  qwen)      log="/tmp/llama-qwen.log"      ;;
-  gemma)     log="/tmp/llama-gemma.log"     ;;
-  ornith35b) log="/tmp/llama-ornith35b.log" ;;
-  gptoss)    log="/tmp/llama-gptoss.log"    ;;
-  qwen36moe) log="/tmp/llama-qwen36moe.log" ;;
+  gemma)      log="/tmp/llama-gemma.log"          ;;
+  gemmamoe)   log="/tmp/llama-gemmamoe.log" ;;
+  gptoss)     log="/tmp/llama-gptoss.log"         ;;
+  ornith35b)  log="/tmp/llama-ornith35b.log"      ;;
+  qwen)       log="/tmp/llama-qwen.log"           ;;
+  qwen36moe)  log="/tmp/llama-qwen36moe.log"      ;;
   *)
-    echo "Usage: llama-log <qwen|gemma|ornith35b|gptoss|qwen36moe>"
+    echo "Usage: llama-log <gemma|gemmamoe|gptoss|ornith35b|qwen|qwen36moe>"
     exit 1
     ;;
 esac

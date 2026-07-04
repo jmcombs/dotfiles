@@ -28,13 +28,15 @@
     <string>q8_0</string>
     <string>--jinja</string>
     <string>--reasoning-format</string>
-    <string>auto</string>
+    <string>deepseek</string>
+    <string>--temp</string>
+    <string>0.3</string>
     <string>--parallel</string>
     <string>1</string>
     <string>--host</string>
     <string>127.0.0.1</string>
     <string>--port</string>
-    <string>11440</string>
+    <string>11436</string>
   </array>
 
   <key>RunAtLoad</key>

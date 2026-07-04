@@ -5,7 +5,7 @@
 <dict>
 
   <key>Label</key>
-  <string>com.llama.gemmaverifymoe</string>
+  <string>com.llama.gemmamoe</string>
 
   <key>ProgramArguments</key>
   <array>
@@ -13,7 +13,7 @@
     <string>--model</string>
     <string>/Users/jmcombs/.local/share/llama/models/gemma-4-26B_q4_0-it.gguf</string>
     <string>--alias</string>
-    <string>gemma4-26b-a4b-verifier</string>
+    <string>gemma4-26b-a4b</string>
     <string>--ctx-size</string>
     <string>131072</string>
     <string>--batch-size</string>
@@ -41,18 +41,12 @@
     <string>0.95</string>
     <string>--min-p</string>
     <string>0.0</string>
-    <string>--dry-multiplier</string>
-    <string>0.8</string>
-    <string>--dry-base</string>
-    <string>1.75</string>
-    <string>--dry-allowed-length</string>
-    <string>2</string>
     <string>--parallel</string>
     <string>1</string>
     <string>--host</string>
     <string>127.0.0.1</string>
     <string>--port</string>
-    <string>11443</string>
+    <string>11435</string>
   </array>
 
   <key>RunAtLoad</key>
@@ -62,9 +56,9 @@
   <false/>
 
   <key>StandardOutPath</key>
-  <string>/tmp/llama-gemmaverifymoe.log</string>
+  <string>/tmp/llama-gemmamoe.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/llama-gemmaverifymoe.log</string>
+  <string>/tmp/llama-gemmamoe.log</string>
 
 </dict>
 </plist>
