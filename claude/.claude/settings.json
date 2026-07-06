@@ -1,24 +1,24 @@
 {
-  "enabledPlugins": {
-    "context7@claude-plugins-official": true
-  },
   "hooks": {
     "SessionStart": [
       {
+        "matcher": "*",
         "hooks": [
           {
+            "type": "command",
             "command": "bash '/Users/jmcombs/.claude/hooks/herdr-agent-state.sh' session",
-            "timeout": 10,
-            "type": "command"
+            "timeout": 10
           }
-        ],
-        "matcher": "*"
+        ]
       }
     ]
   },
   "statusLine": {
-    "command": "bash ~/.claude/statusline-command.sh",
-    "type": "command"
+    "type": "command",
+    "command": "bash ~/.claude/statusline-command.sh"
+  },
+  "enabledPlugins": {
+    "context7@claude-plugins-official": true
   },
   "theme": "auto"
 }

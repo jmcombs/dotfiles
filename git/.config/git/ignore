@@ -6,3 +6,5 @@
 # pi agent-harness output — never belongs in any project repo
 .pi-subagents/
 .pi/
+
+**/.claude/.cc-writes/
