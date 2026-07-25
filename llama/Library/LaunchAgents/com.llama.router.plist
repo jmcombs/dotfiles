@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+  <key>Label</key>
+  <string>com.llama.router</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/llama-server</string>
+    <string>--models-dir</string>
+    <string>/Users/jmcombs/.local/share/llama/models</string>
+    <string>--models-preset</string>
+    <string>/Users/jmcombs/.local/share/llama/models.ini</string>
+    <string>--no-models-autoload</string>
+    <string>--models-max</string>
+    <string>1</string>
+    <string>--jinja</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>8080</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/llama-router.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/llama-router.log</string>
+
+</dict>
+</plist>

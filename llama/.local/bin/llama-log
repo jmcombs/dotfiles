@@ -7,8 +7,9 @@ case "$1" in
   ornith35b)  log="/tmp/llama-ornith35b.log"      ;;
   qwen)       log="/tmp/llama-qwen.log"           ;;
   qwen36moe)  log="/tmp/llama-qwen36moe.log"      ;;
+  router)     log="/tmp/llama-router.log"         ;;
   *)
-    echo "Usage: llama-log <gemma|gemmamoe|gptoss|ornith35b|qwen|qwen36moe>"
+    echo "Usage: llama-log <gemma|gemmamoe|gptoss|ornith35b|qwen|qwen36moe|router>"
     exit 1
     ;;
 esac

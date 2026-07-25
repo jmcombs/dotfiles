@@ -8,8 +8,9 @@ case "$1" in
   ornith35b)  label="com.llama.ornith35b"      ;;
   qwen)       label="com.llama.qwen"           ;;
   qwen36moe)  label="com.llama.qwen36moe"      ;;
+  router)     label="com.llama.router"         ;;
   *)
-    echo "Usage: llama-stop <gemma|gemmamoe|gptoss|ornith35b|qwen|qwen36moe>"
+    echo "Usage: llama-stop <gemma|gemmamoe|gptoss|ornith35b|qwen|qwen36moe|router>"
     exit 1
     ;;
 esac
