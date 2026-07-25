@@ -37,9 +37,9 @@ CONFIGS = {
     "solo-ornith":    {"provider": "llama.cpp", "model": "ornith-1.0-35b-moe",
                         "thinking": "high", "agents": None,
                         "label": "Solo Ornith-35B (router)"},
-    "solo-qwen":      {"provider": "llama-qwen", "model": "qwen3.6-27b-coding-optimized",
+    "solo-qwen":      {"provider": "llama.cpp", "model": "qwen3.6-27b-coding-optimized",
                         "thinking": "high", "agents": None,
-                        "label": "Solo Qwen3.6-27B"},
+                        "label": "Solo Qwen3.6-27B (router)"},
     # Orchestrated: reasoning orchestrator delegates building to the builder subagent.
     "orch-ornith":    {"provider": "llama.cpp", "model": "ornith-1.0-35b-moe",
                         "thinking": "high", "agents": ["builder"],
