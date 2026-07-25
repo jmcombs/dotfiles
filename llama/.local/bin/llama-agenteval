@@ -34,16 +34,16 @@ AGENTS_DIR = Path.home() / ".pi" / "agent" / "agents"
 # 'agents' lists subagents the orchestrator may delegate to (must exist as
 # ~/.pi/agent/agents/<name>.md pinned to a model). None = solo (no delegation).
 CONFIGS = {
-    "solo-ornith":    {"provider": "llama-ornith35b", "model": "ornith-1.0-35b-moe",
+    "solo-ornith":    {"provider": "llama.cpp", "model": "ornith-1.0-35b-moe",
                         "thinking": "high", "agents": None,
-                        "label": "Solo Ornith-35B"},
+                        "label": "Solo Ornith-35B (router)"},
     "solo-qwen":      {"provider": "llama-qwen", "model": "qwen3.6-27b-coding-optimized",
                         "thinking": "high", "agents": None,
                         "label": "Solo Qwen3.6-27B"},
     # Orchestrated: reasoning orchestrator delegates building to the builder subagent.
-    "orch-ornith":    {"provider": "llama-ornith35b", "model": "ornith-1.0-35b-moe",
+    "orch-ornith":    {"provider": "llama.cpp", "model": "ornith-1.0-35b-moe",
                         "thinking": "high", "agents": ["builder"],
-                        "label": "Ornith-35B orch -> builder"},
+                        "label": "Ornith-35B orch -> builder (router)"},
 }
 
 LANG_DIR = {"py": "python", "js": "javascript"}
