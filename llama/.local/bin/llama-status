@@ -1,6 +1,7 @@
 #!/bin/zsh
 
 servers=(
+  "8080:router:llama.cpp-router"
   "11434:gemma:Gemma4-31B"
   "11435:gemmamoe:Gemma4-26B-A4B"
   "11436:gptoss:gpt-oss-20b"
