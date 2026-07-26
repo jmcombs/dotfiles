@@ -2,15 +2,9 @@
 set -e
 
 case "$1" in
-  gemma)      label="com.llama.gemma"          ;;
-  gemmamoe)   label="com.llama.gemmamoe" ;;
-  gptoss)     label="com.llama.gptoss"         ;;
-  ornith35b)  label="com.llama.ornith35b"      ;;
-  qwen)       label="com.llama.qwen"           ;;
-  qwen36moe)  label="com.llama.qwen36moe"      ;;
-  router)     label="com.llama.router"         ;;
+  router) label="com.llama.router" ;;
   *)
-    echo "Usage: llama-stop <gemma|gemmamoe|gptoss|ornith35b|qwen|qwen36moe|router>"
+    echo "Usage: llama-stop <router>"
     exit 1
     ;;
 esac

@@ -1,15 +1,9 @@
 #!/bin/zsh
 
 case "$1" in
-  gemma)      log="/tmp/llama-gemma.log"          ;;
-  gemmamoe)   log="/tmp/llama-gemmamoe.log" ;;
-  gptoss)     log="/tmp/llama-gptoss.log"         ;;
-  ornith35b)  log="/tmp/llama-ornith35b.log"      ;;
-  qwen)       log="/tmp/llama-qwen.log"           ;;
-  qwen36moe)  log="/tmp/llama-qwen36moe.log"      ;;
-  router)     log="/tmp/llama-router.log"         ;;
+  router) log="/tmp/llama-router.log" ;;
   *)
-    echo "Usage: llama-log <gemma|gemmamoe|gptoss|ornith35b|qwen|qwen36moe|router>"
+    echo "Usage: llama-log <router>"
     exit 1
     ;;
 esac
