@@ -1,7 +1,15 @@
 #!/bin/zsh
+# Show llama.cpp router (:8080) presets as first-class, plus legacy dedicated ports.
 
-servers=(
-  "8080:router:llama.cpp-router"
+ROUTER_HOST="${LLAMA_ROUTER_HOST:-127.0.0.1}"
+ROUTER_PORT="${LLAMA_ROUTER_PORT:-8080}"
+# Prefer LLAMA_ROUTER_BASE, then LLAMA_BASE_URL (may include /v1), else host:port.
+_raw_base="${LLAMA_ROUTER_BASE:-${LLAMA_BASE_URL:-http://${ROUTER_HOST}:${ROUTER_PORT}}}"
+# Strip trailing slash and optional /v1 so we can hit /models and /health.
+ROUTER_BASE="${_raw_base%/}"
+ROUTER_BASE="${ROUTER_BASE%/v1}"
+
+legacy=(
   "11434:gemma:Gemma4-31B"
   "11435:gemmamoe:Gemma4-26B-A4B"
   "11436:gptoss:gpt-oss-20b"
@@ -10,7 +18,52 @@ servers=(
   "11439:qwen36moe:Qwen3.6-35B-A3B"
 )
 
-for entry in $servers; do
+if lsof -i ":${ROUTER_PORT}" -sTCP:LISTEN &>/dev/null 2>&1; then
+  echo "● router (llama.cpp-router) — running on :${ROUTER_PORT}"
+  # List source=preset entries with loaded/unloaded (and n_ctx when available).
+  # Prefer python for robust JSON; fall back to a quiet note if curl/python fails.
+  _models_json="$(curl -sS --max-time 2 "${ROUTER_BASE}/models" 2>/dev/null)" || _models_json=""
+  if [[ -n "$_models_json" ]]; then
+    print -r -- "$_models_json" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception as e:
+    print(f"  (could not parse /models: {e})")
+    sys.exit(0)
+rows = data.get("data") if isinstance(data, dict) else data
+if not isinstance(rows, list):
+    print("  (unexpected /models shape)")
+    sys.exit(0)
+presets = [m for m in rows if isinstance(m, dict) and m.get("source") == "preset"]
+if not presets:
+    print("  (no source=preset entries in catalog)")
+    sys.exit(0)
+for m in sorted(presets, key=lambda x: str(x.get("id") or "")):
+    mid = m.get("id") or "?"
+    st = m.get("status") or {}
+    val = st.get("value") or "unknown"
+    mark = "●" if val == "loaded" else "○"
+    # Best-effort n_ctx from launch args when present
+    n_ctx = None
+    args = st.get("args") or []
+    if isinstance(args, list) and "--ctx-size" in args:
+        i = args.index("--ctx-size")
+        if i + 1 < len(args):
+            n_ctx = args[i + 1]
+    extra = f", n_ctx={n_ctx}" if n_ctx and val == "loaded" else ""
+    print(f"  {mark} {mid} — {val}{extra}")
+' 2>/dev/null || echo "  (could not list router presets)"
+  else
+    echo "  (router listening but /models unreachable at ${ROUTER_BASE}/models)"
+  fi
+else
+  echo "○ router (llama.cpp-router) — stopped"
+fi
+
+echo ""
+echo "Legacy dedicated ports (fallback — Phase 5 retires these):"
+for entry in $legacy; do
   port="${entry%%:*}"
   rest="${entry#*:}"
   alias="${rest%%:*}"
