@@ -1,10 +1,16 @@
 #!/usr/bin/env node
-// HumanEval benchmark runner for local llama.cpp models.
+// HumanEval benchmark runner for local llama.cpp router models.
 // Fetches MultiPL-E (TypeScript) and openai/openai_humaneval (Python) from
 // the HuggingFace datasets server, runs them through promptfoo, reports pass@1.
 //
+// Talks to the single router on :8080 (LLAMA_ROUTER_BASE / LLAMA_BASE_URL).
+// Short keys map to router preset alias/id; apiBaseUrl is always {router}/v1.
+// A model is "running" only when the router is up AND /models status is loaded.
+// Note: router --models-max 1 means only one preset loaded at a time — multi-model
+// runs need sequential swap or raising models-max / legacy dual servers.
+//
 // Usage:
-//   llama-humaneval                          both languages, all running models
+//   llama-humaneval                          both languages, all *loaded* presets
 //   llama-humaneval --language ts            TypeScript only
 //   llama-humaneval --language py            Python only
 //   llama-humaneval --models qwen,ornith35b  specific models
@@ -18,16 +24,35 @@ const http = require('http');
 const https = require('https');
 const os   = require('os');
 const path = require('path');
+const { URL } = require('url');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
+// Short keys → router preset alias/id (not dedicated ports).
 const MODELS = {
-  qwen:      { port: 11438, alias: 'qwen3.6-27b-coding-optimized',   label: 'Qwen3.6-27B'       },
-  gemma:     { port: 11434, alias: 'gemma4-31b-coding-mtp-optimized', label: 'Gemma4-31B'        },
-  ornith35b: { port: 11437, alias: 'ornith-1.0-35b-moe',             label: 'Ornith-1.0-35B-MoE'},
-  gptoss:    { port: 11436, alias: 'gpt-oss-20b',                    label: 'gpt-oss-20B'       },
-  qwen36moe: { port: 11439, alias: 'qwen3.6-35b-a3b',               label: 'Qwen3.6-35B-A3B'   },
+  qwen:      { alias: 'qwen3.6-27b-coding-optimized',   label: 'Qwen3.6-27B'        },
+  gemma:     { alias: 'gemma4-31b-coding-mtp-optimized', label: 'Gemma4-31B'         },
+  gemmamoe:  { alias: 'gemma4-26b-a4b',                  label: 'Gemma4-26B-A4B'     },
+  ornith35b: { alias: 'ornith-1.0-35b-moe',             label: 'Ornith-1.0-35B-MoE' },
+  gptoss:    { alias: 'gpt-oss-20b',                    label: 'gpt-oss-20B'        },
+  qwen36moe: { alias: 'qwen3.6-35b-a3b',               label: 'Qwen3.6-35B-A3B'    },
 };
+
+function normalizeRouterBase(raw) {
+  let base = (raw || '').trim().replace(/\/+$/, '');
+  if (base.endsWith('/v1')) base = base.slice(0, -3).replace(/\/+$/, '');
+  return base || 'http://127.0.0.1:8080';
+}
+
+function routerBase() {
+  return normalizeRouterBase(
+    process.env.LLAMA_ROUTER_BASE || process.env.LLAMA_BASE_URL || 'http://127.0.0.1:8080'
+  );
+}
+
+function apiBaseUrl() {
+  return `${routerBase()}/v1`;
+}
 
 const SHARE_DIR   = path.join(os.homedir(), '.local', 'share', 'humaneval');
 const CACHE_DIR   = path.join(os.homedir(), '.cache', 'llama-humaneval');
@@ -84,11 +109,62 @@ if (!languages.every(l => l in DATASETS)) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function isRunning(port) {
+function routerHostPort() {
+  try {
+    const u = new URL(routerBase());
+    const host = u.hostname || '127.0.0.1';
+    let port = u.port ? parseInt(u.port, 10) : (u.protocol === 'https:' ? 443 : 8080);
+    return { host, port };
+  } catch {
+    return { host: '127.0.0.1', port: 8080 };
+  }
+}
+
+function routerUp() {
+  const { port } = routerHostPort();
   try {
     const result = spawnSync('bash', ['-c', `lsof -i :${port} -sTCP:LISTEN`], { encoding: 'utf8' });
     return result.stdout.trim().length > 0;
   } catch { return false; }
+}
+
+/** Synchronously GET JSON from url (http only; local router). */
+function fetchJsonSync(url, timeoutMs = 3000) {
+  try {
+    // curl is always available on macOS and keeps this script dependency-free.
+    const r = spawnSync('curl', ['-sS', '--max-time', String(Math.ceil(timeoutMs / 1000)), url], {
+      encoding: 'utf8',
+    });
+    if (r.status !== 0 || !r.stdout) return null;
+    return JSON.parse(r.stdout);
+  } catch { return null; }
+}
+
+function entryIds(entry) {
+  const ids = new Set();
+  if (entry && entry.id) ids.add(String(entry.id));
+  for (const a of (entry && entry.aliases) || []) ids.add(String(a));
+  return ids;
+}
+
+function modelStatus(key) {
+  const alias = MODELS[key] && MODELS[key].alias;
+  if (!alias) return null;
+  const data = fetchJsonSync(`${routerBase()}/models`);
+  const rows = data && (data.data || data);
+  if (!Array.isArray(rows)) return null;
+  for (const entry of rows) {
+    if (entryIds(entry).has(alias)) {
+      return (entry.status && entry.status.value) || null;
+    }
+  }
+  return null;
+}
+
+/** True when router is up AND the preset for key reports status=loaded. */
+function isRunning(key) {
+  if (!routerUp()) return false;
+  return modelStatus(key) === 'loaded';
 }
 
 function fetch(url, attempt = 0) {
@@ -149,10 +225,11 @@ function checkDep(cmd, installHint) {
 // ── Config generation ─────────────────────────────────────────────────────────
 
 function buildPromptfooConfig(lang, dataset, problems, targetModels) {
+  const base = apiBaseUrl();
   const providers = targetModels.map(key => ({
     id: `openai:chat:${MODELS[key].alias}`,
     config: {
-      apiBaseUrl: `http://127.0.0.1:${MODELS[key].port}/v1`,
+      apiBaseUrl: base,
       apiKey: 'local',
       max_tokens: 8192,
     },
@@ -292,26 +369,28 @@ function summarise(resultsPath, targetModels, lang, total) {
     checkDep('bun', 'brew install bun');
   }
 
-  // Resolve target models
+  // Resolve target models — default = loaded router presets only
   let targetModels;
   if (modelsArg) {
-    targetModels = modelsArg.split(',').map(s => s.trim());
+    targetModels = modelsArg.split(',').map(s => s.trim()).filter(Boolean);
     const invalid = targetModels.filter(k => !(k in MODELS));
     if (invalid.length) {
       console.error(`Unknown models: ${invalid.join(', ')}. Valid: ${Object.keys(MODELS).join(', ')}`);
       process.exit(1);
     }
   } else {
-    targetModels = Object.keys(MODELS).filter(k => isRunning(MODELS[k].port));
+    targetModels = Object.keys(MODELS).filter(k => isRunning(k));
   }
 
   if (targetModels.length === 0) {
-    console.error('No models running. Use: llama-start <model>');
+    console.error(`No models loaded on router at ${routerBase()}.`);
+    console.error('Load a preset via Pi /llama or POST /models/load, then retry.');
     process.exit(1);
   }
 
   fs.mkdirSync(RESULTS_DIR, { recursive: true });
 
+  console.log(`Router:   ${routerBase()}`);
   console.log(`Models:   ${targetModels.map(k => MODELS[k].label).join(', ')}`);
   console.log(`Language: ${languages.join(', ')}`);
   if (limit > 0) console.log(`Limit:    ${limit} problems per language`);

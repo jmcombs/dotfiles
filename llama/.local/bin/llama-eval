@@ -1,21 +1,35 @@
 #!/usr/bin/env python3
-# No external dependencies — uses Python stdlib only.
-#
-# Usage:
-#   llama-bench                          run all running models
-#   llama-bench --models qwen            run one model
-#   llama-bench --speed-only             skip quality scoring
-#   llama-bench --runs 3                 average timing over 3 runs
-#   llama-bench compare                  diff last two result files
-#   llama-bench compare a.json b.json    diff specific results
-#   llama-bench soak                     real-world speed: context-depth curve + thermal soak
-#   llama-bench soak --models qwen --soak-min 5
-#   llama-bench soak --no-soak           context-depth curve only (fast)
-#   llama-bench baseline --models qwen   model comparison: HumanEval → accuracy + sustained tok/s
-#   llama-bench baseline --models qwen --limit 70     faster directional comparison
-#   llama-bench baseline --models qwen --tuning       also run speed phase (for llama.cpp tuning)
-#   llama-bench progress                 live HumanEval progress (read-only; ACTIVE/IDLE aware)
-#   llama-bench progress --once          single snapshot
+"""llama-eval / llama-bench — local llama.cpp router benchmarks.
+
+No external dependencies — uses Python stdlib only.
+
+Talks to the single llama.cpp router on :8080 (override with LLAMA_ROUTER_BASE
+or LLAMA_BASE_URL). Model selection uses short keys → router preset alias/id;
+requests go to {router}/v1 with the alias in the payload. A model is "running"
+only when the router is up AND that preset's /models status is loaded.
+
+Multi-model H2H limitation: the router is configured with --models-max 1, so
+only one preset can be loaded at a time. Head-to-head quality compares need
+either sequential load/unload (swap) between models, raising --models-max, or
+the legacy dual dedicated servers on :1143x (Phase 5 retires those).
+
+Usage:
+  llama-bench                          run all *loaded* router presets
+  llama-bench --models qwen            run one model (must be loaded)
+  llama-bench --all-presets            default list = all known keys (still need load)
+  llama-bench --speed-only             skip quality scoring
+  llama-bench --runs 3                 average timing over 3 runs
+  llama-bench compare                  diff last two result files
+  llama-bench compare a.json b.json    diff specific results
+  llama-bench soak                     real-world speed: context-depth curve + thermal soak
+  llama-bench soak --models qwen --soak-min 5
+  llama-bench soak --no-soak           context-depth curve only (fast)
+  llama-bench baseline --models qwen   model comparison: HumanEval → accuracy + sustained tok/s
+  llama-bench baseline --models qwen --limit 70     faster directional comparison
+  llama-bench baseline --models qwen --tuning       also run speed phase (for llama.cpp tuning)
+  llama-bench progress                 live HumanEval progress (read-only; ACTIVE/IDLE aware)
+  llama-bench progress --once          single snapshot
+"""
 
 import argparse
 import json
@@ -36,15 +50,30 @@ SHARE_DIR = Path.home() / ".local" / "share" / "llama-bench"
 RESULTS_DIR = Path.home() / ".cache" / "llama-bench" / "results"
 LOGS_DIR = Path.home() / ".cache" / "llama-bench" / "logs"
 
+# Short keys → router preset alias/id (not dedicated ports).
 MODELS = {
-    "qwen":      {"port": 11438, "alias": "qwen3.6-27b-coding-optimized",   "label": "Qwen3.6-27B"},
-    "gemma":     {"port": 11434, "alias": "gemma4-31b-coding-mtp-optimized", "label": "Gemma4-31B"},
-    "ornith35b": {"port": 11437, "alias": "ornith-1.0-35b-moe",             "label": "Ornith-1.0-35B-MoE"},
-    "gptoss":    {"port": 11436, "alias": "gpt-oss-20b",                    "label": "gpt-oss-20B"},
-    "qwen36moe": {"port": 11439, "alias": "qwen3.6-35b-a3b",               "label": "Qwen3.6-35B-A3B"},
+    "qwen":      {"alias": "qwen3.6-27b-coding-optimized",   "label": "Qwen3.6-27B"},
+    "gemma":     {"alias": "gemma4-31b-coding-mtp-optimized", "label": "Gemma4-31B"},
+    "gemmamoe":  {"alias": "gemma4-26b-a4b",                  "label": "Gemma4-26B-A4B"},
+    "ornith35b": {"alias": "ornith-1.0-35b-moe",             "label": "Ornith-1.0-35B-MoE"},
+    "gptoss":    {"alias": "gpt-oss-20b",                    "label": "gpt-oss-20B"},
+    "qwen36moe": {"alias": "qwen3.6-35b-a3b",               "label": "Qwen3.6-35B-A3B"},
 }
 
-JUDGE_KEY = "qwen36moe"
+JUDGE_KEY = "qwen36moe"  # must be *loaded* on the router for quality / H2H scoring
+
+
+def _normalize_router_base(raw: str) -> str:
+    """Accept host root or .../v1; always return scheme://host[:port] root."""
+    base = (raw or "").strip().rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3].rstrip("/")
+    return base or "http://127.0.0.1:8080"
+
+
+def router_base() -> str:
+    raw = os.environ.get("LLAMA_ROUTER_BASE") or os.environ.get("LLAMA_BASE_URL") or "http://127.0.0.1:8080"
+    return _normalize_router_base(raw)
 
 JUDGE_SOLO_SYSTEM = (
     "You are a strict code quality judge. Evaluate the AI response based on: "
@@ -63,14 +92,100 @@ JUDGE_H2H_SYSTEM = (
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 
-def is_running(port: int) -> bool:
+def _router_host_port() -> tuple[str, int]:
+    """Parse host/port for a cheap TCP probe (default 127.0.0.1:8080)."""
+    from urllib.parse import urlparse
+    u = urlparse(router_base())
+    host = u.hostname or "127.0.0.1"
+    if u.port is not None:
+        port = u.port
+    elif u.scheme == "https":
+        port = 443
+    elif u.scheme == "http":
+        # Conventional local router; urlparse omits default ports only — we use 8080.
+        port = 8080
+    else:
+        port = 8080
+    return host, port
+
+
+def router_up() -> bool:
+    host, port = _router_host_port()
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.5)
-        return s.connect_ex(("127.0.0.1", port)) == 0
+        try:
+            return s.connect_ex((host, port)) == 0
+        except OSError:
+            return False
 
 
-def base_url(key: str) -> str:
-    return f"http://127.0.0.1:{MODELS[key]['port']}/v1"
+_catalog_cache: list | None = None
+_catalog_cache_ts: float = 0.0
+
+
+def router_models_catalog(force: bool = False) -> list:
+    """GET {router}/models — list of catalog entries (cached briefly)."""
+    global _catalog_cache, _catalog_cache_ts
+    now = time.time()
+    if not force and _catalog_cache is not None and (now - _catalog_cache_ts) < 2.0:
+        return _catalog_cache
+    try:
+        data = _get(f"{router_base()}/models", timeout=3)
+        rows = data.get("data") if isinstance(data, dict) else data
+        _catalog_cache = rows if isinstance(rows, list) else []
+    except Exception:
+        _catalog_cache = []
+    _catalog_cache_ts = now
+    return _catalog_cache
+
+
+def _entry_ids(entry: dict) -> set[str]:
+    ids = set()
+    if entry.get("id"):
+        ids.add(str(entry["id"]))
+    for a in entry.get("aliases") or []:
+        ids.add(str(a))
+    return ids
+
+
+def model_status(key: str) -> str | None:
+    """Return router status value for key ('loaded'/'unloaded'/...) or None if unknown."""
+    if key not in MODELS:
+        return None
+    alias = MODELS[key]["alias"]
+    for entry in router_models_catalog():
+        if not isinstance(entry, dict):
+            continue
+        if alias in _entry_ids(entry):
+            st = entry.get("status") or {}
+            return st.get("value")
+    return None
+
+
+def is_running(key: str) -> bool:
+    """True when router is up AND the preset for `key` reports status=loaded."""
+    if not router_up():
+        return False
+    return model_status(key) == "loaded"
+
+
+def base_url(key: str | None = None) -> str:
+    """OpenAI-compatible base; always the router /v1 (key kept for call-site compat)."""
+    return f"{router_base()}/v1"
+
+
+def resolve_target_models(models_arg: str | None, all_presets: bool = False) -> list[str]:
+    """Parse --models or default to loaded presets (or all keys with --all-presets)."""
+    if models_arg:
+        target_models = [m.strip() for m in models_arg.split(",") if m.strip()]
+        invalid = [m for m in target_models if m not in MODELS]
+        if invalid:
+            sys.exit(f"Unknown models: {', '.join(invalid)}. Valid: {', '.join(MODELS)}")
+        return target_models
+    if all_presets:
+        return list(MODELS.keys())
+    # Default matches old "only running servers": only *loaded* router presets.
+    return [k for k in MODELS if is_running(k)]
 
 
 def _post(url: str, payload: dict, timeout: int = 300) -> dict:
@@ -212,16 +327,36 @@ def read_model_config(model_key: str) -> dict:
             except Exception:
                 pass
             break
+    # Live props come from the router (single process). Shape may differ by
+    # llama.cpp version / whether a model is loaded — never crash on mismatch.
     try:
-        props = _get(f"http://127.0.0.1:{MODELS[model_key]['port']}/props")
-        bi = props.get("build_info")
-        dgs = props.get("default_generation_settings", {})
-        if not bi and isinstance(dgs, dict):
-            bi = dgs.get("build_info")
-        if bi:
-            cfg["_build"] = bi
-        if isinstance(dgs, dict) and dgs.get("n_ctx"):
-            cfg["_n_ctx_live"] = dgs["n_ctx"]
+        props = _get(f"{router_base()}/props")
+        if isinstance(props, dict):
+            bi = props.get("build_info")
+            dgs = props.get("default_generation_settings", {})
+            if not bi and isinstance(dgs, dict):
+                bi = dgs.get("build_info")
+            if bi:
+                cfg["_build"] = bi
+            if isinstance(dgs, dict) and dgs.get("n_ctx"):
+                cfg["_n_ctx_live"] = dgs["n_ctx"]
+    except Exception:
+        pass
+    # Augment from /models catalog entry when the preset is visible.
+    try:
+        alias = MODELS.get(model_key, {}).get("alias")
+        for entry in router_models_catalog():
+            if not isinstance(entry, dict):
+                continue
+            if alias and alias in _entry_ids(entry):
+                st = entry.get("status") or {}
+                cfg["_router_status"] = st.get("value")
+                args = st.get("args") or []
+                if isinstance(args, list) and "--ctx-size" in args:
+                    i = args.index("--ctx-size")
+                    if i + 1 < len(args):
+                        cfg.setdefault("_n_ctx_live", args[i + 1])
+                break
     except Exception:
         pass
     return cfg
@@ -481,31 +616,34 @@ def print_run_report(run_results: dict, target_models: list, has_scores: bool):
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 def cmd_run(raw_args: list):
-    parser = argparse.ArgumentParser(description="Run benchmark against local llama.cpp models")
-    parser.add_argument("--models", help="Comma-separated: qwen,ornith35b,qwen36moe (default: all running)")
+    parser = argparse.ArgumentParser(description="Run benchmark against local llama.cpp router models")
+    parser.add_argument("--models", help="Comma-separated keys (default: all loaded router presets)")
+    parser.add_argument("--all-presets", action="store_true",
+                        help="When --models omitted, consider all known keys (still must be loaded to run)")
     parser.add_argument("--categories", default="typescript,python")
     parser.add_argument("--runs", type=int, default=1, help="Timing runs per prompt for averaging")
     parser.add_argument("--speed-only", action="store_true", help="Skip quality scoring")
     args = parser.parse_args(raw_args)
 
-    if args.models:
-        target_models = [m.strip() for m in args.models.split(",")]
-        invalid = [m for m in target_models if m not in MODELS]
-        if invalid:
-            sys.exit(f"Unknown models: {', '.join(invalid)}. Valid: {', '.join(MODELS)}")
-    else:
-        target_models = [k for k, v in MODELS.items() if is_running(v["port"])]
+    target_models = resolve_target_models(args.models, all_presets=args.all_presets)
 
     if not target_models:
-        sys.exit("No models running. Use: llama-start <model>")
+        sys.exit(
+            "No models loaded on router. Load via Pi /llama or API, then retry. "
+            f"Router: {router_base()}  (keys: {', '.join(MODELS)})"
+        )
 
     print(f"Models:      {', '.join(MODELS[m]['label'] for m in target_models)}")
+    print(f"Router:      {router_base()}")
 
-    run_quality = not args.speed_only and is_running(MODELS[JUDGE_KEY]["port"])
+    run_quality = not args.speed_only and is_running(JUDGE_KEY)
     if not args.speed_only and not run_quality:
-        print(f"Judge:       not running — skipping quality scoring (llama-start qwen36moe to enable)")
+        print(
+            f"Judge:       not loaded — skipping quality scoring "
+            f"(load {MODELS[JUDGE_KEY]['alias']} on router to enable)"
+        )
     elif run_quality:
-        print(f"Judge:       {MODELS[JUDGE_KEY]['label']} (:{MODELS[JUDGE_KEY]['port']})")
+        print(f"Judge:       {MODELS[JUDGE_KEY]['label']} (router loaded)")
 
     categories = [c.strip() for c in args.categories.split(",")]
     prompts = load_prompts(categories)
@@ -594,9 +732,12 @@ def cmd_compare(raw_args: list):
     if not common_pids:
         sys.exit("No prompts in common between the two result files.")
 
-    run_quality = not args.speed_only and is_running(MODELS[JUDGE_KEY]["port"])
+    run_quality = not args.speed_only and is_running(JUDGE_KEY)
     if not args.speed_only and not run_quality:
-        print("Judge not running — showing speed comparison only (llama-start qwen36moe to enable)")
+        print(
+            f"Judge not loaded on router — showing speed comparison only "
+            f"(load {MODELS[JUDGE_KEY]['alias']} to enable H2H; note --models-max 1)"
+        )
 
     sep = "─" * 72
     print(f"\n{sep}")
@@ -824,7 +965,9 @@ def cooldown(seconds: int):
 def cmd_soak(raw_args: list):
     parser = argparse.ArgumentParser(
         description="Real-world speed: context-depth decay curve + sustained throttle soak")
-    parser.add_argument("--models", help="Comma-separated (default: all running)")
+    parser.add_argument("--models", help="Comma-separated (default: all loaded router presets)")
+    parser.add_argument("--all-presets", action="store_true",
+                        help="When --models omitted, consider all known keys")
     parser.add_argument("--depths", default="0,4000,8000,16000,32000",
                         help="Context depths in tokens for the decay curve")
     parser.add_argument("--gen-tokens", type=int, default=256,
@@ -839,15 +982,12 @@ def cmd_soak(raw_args: list):
     parser.add_argument("--no-soak", action="store_true", help="Skip the sustained soak")
     args = parser.parse_args(raw_args)
 
-    if args.models:
-        target_models = [m.strip() for m in args.models.split(",")]
-        invalid = [m for m in target_models if m not in MODELS]
-        if invalid:
-            sys.exit(f"Unknown models: {', '.join(invalid)}. Valid: {', '.join(MODELS)}")
-    else:
-        target_models = [k for k, v in MODELS.items() if is_running(v["port"])]
+    target_models = resolve_target_models(args.models, all_presets=args.all_presets)
     if not target_models:
-        sys.exit("No models running. Use: llama-start <model>")
+        sys.exit(
+            "No models loaded on router. Load via Pi /llama or API, then retry. "
+            f"Router: {router_base()}"
+        )
 
     depths = [int(d) for d in args.depths.split(",") if d.strip() != ""]
 
@@ -1169,7 +1309,9 @@ def cmd_baseline(raw_args: list):
     parser = argparse.ArgumentParser(
         description="Per-model baseline. Default: HumanEval → accuracy + sustained tok/s. "
                     "Add --tuning to also run the controlled speed phase (for llama.cpp tuning).")
-    parser.add_argument("--models", help="Comma-separated (default: all running)")
+    parser.add_argument("--models", help="Comma-separated (default: all loaded router presets)")
+    parser.add_argument("--all-presets", action="store_true",
+                        help="When --models omitted, consider all known keys")
     parser.add_argument("--languages", default="both", help="HumanEval languages: ts | py | both")
     parser.add_argument("--limit", type=int, default=0,
                         help="HumanEval problems per language (0 = all 159 TS / 164 Py). "
@@ -1197,15 +1339,12 @@ def cmd_baseline(raw_args: list):
     if not run_quality and not run_speed:
         sys.exit("Nothing to run: --no-quality requires --tuning (for a speed-only run).")
 
-    if args.models:
-        target_models = [m.strip() for m in args.models.split(",")]
-        invalid = [m for m in target_models if m not in MODELS]
-        if invalid:
-            sys.exit(f"Unknown models: {', '.join(invalid)}. Valid: {', '.join(MODELS)}")
-    else:
-        target_models = [k for k, v in MODELS.items() if is_running(v["port"])]
+    target_models = resolve_target_models(args.models, all_presets=args.all_presets)
     if not target_models:
-        sys.exit("No models running. Use: llama-start <model>")
+        sys.exit(
+            "No models loaded on router. Load via Pi /llama or API, then retry. "
+            f"Router: {router_base()}"
+        )
 
     he_bin = shutil.which("llama-humaneval")
     if run_quality and not he_bin:

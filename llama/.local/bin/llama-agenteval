@@ -6,6 +6,11 @@ planning, real tool use (read/bash/edit/write), self-verification, and error
 recovery — driving the *real* pi harness headless (`pi -p --mode json`) over
 Aider polyglot exercises, scored by the exercise's own hidden tests.
 
+Providers use pi's built-in `llama.cpp` against the router on :8080
+(LLAMA_ROUTER_BASE / LLAMA_BASE_URL). Before a long run, ensure the router is
+up and the target model is *loaded* (Pi `/llama` load, or POST /models/load).
+Router `--models-max 1` means only one preset is resident at a time.
+
 Two comparison modes:
   - solo:         one model does the whole task (no delegation).
   - orchestrated: an orchestrator model plans+verifies and delegates
@@ -21,9 +26,12 @@ Usage:
 
 Results: ~/.cache/llama-agenteval/results/<config>-<ts>.json
 """
-import argparse, json, os, re, shutil, subprocess, sys, tempfile, time
+import argparse, json, os, re, shutil, socket, subprocess, sys, tempfile, time
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 BENCH   = Path.home() / ".cache" / "llama-agenteval" / "polyglot-benchmark"
 RESULTS = Path.home() / ".cache" / "llama-agenteval" / "results"
@@ -50,6 +58,99 @@ LANG_DIR = {"py": "python", "js": "javascript"}
 PI_TIMEOUT = 1200   # seconds per task; covers legit deep reasoning (Ornith book-store
                     # took ~1095s and passed) while still bounding true hangs at 20 min.
                     # TODO: idle-watchdog (kill if no model activity N min) would be tighter.
+
+
+def _normalize_router_base(raw: str) -> str:
+    base = (raw or "").strip().rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3].rstrip("/")
+    return base or "http://127.0.0.1:8080"
+
+
+def router_base() -> str:
+    raw = os.environ.get("LLAMA_ROUTER_BASE") or os.environ.get("LLAMA_BASE_URL") or "http://127.0.0.1:8080"
+    return _normalize_router_base(raw)
+
+
+def router_up() -> bool:
+    u = urlparse(router_base())
+    host = u.hostname or "127.0.0.1"
+    port = u.port or (443 if u.scheme == "https" else 8080)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        try:
+            return s.connect_ex((host, port)) == 0
+        except OSError:
+            return False
+
+
+def _get_json(url: str, timeout: float = 3.0):
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
+def model_loaded_on_router(model_id: str) -> bool | None:
+    """True/False if catalog known; None if /models unreachable."""
+    try:
+        data = _get_json(f"{router_base()}/models")
+    except Exception:
+        return None
+    rows = data.get("data") if isinstance(data, dict) else data
+    if not isinstance(rows, list):
+        return None
+    for entry in rows:
+        if not isinstance(entry, dict):
+            continue
+        ids = {str(entry.get("id") or "")}
+        ids.update(str(a) for a in (entry.get("aliases") or []))
+        if model_id in ids:
+            return (entry.get("status") or {}).get("value") == "loaded"
+    return False
+
+
+def preflight_router(config: dict) -> None:
+    """Hard-fail if router is down; hard-fail if configured model is not loaded.
+
+    Long agentic runs are useless against an unloaded preset — fail fast with a
+    clear remediation message instead of timing out mid-task.
+    """
+    base = router_base()
+    print(f"Router:    {base}")
+    if not router_up():
+        sys.exit(
+            f"llama.cpp router is not reachable at {base}.\n"
+            f"  Start it:  llama-start router\n"
+            f"  Then load: Pi /llama load  OR  "
+            f"curl -sS {base}/models/load -H 'Content-Type: application/json' "
+            f"-d '{{\"model\":\"{config['model']}\"}}'"
+        )
+    # Health (best-effort)
+    try:
+        _get_json(f"{base}/health", timeout=2.0)
+    except Exception as e:
+        sys.exit(f"Router listening but /health failed at {base}: {e}")
+
+    print(
+        "Reminder: ensure the target model is loaded on the router before long runs "
+        f"(Pi /llama or POST {base}/models/load). Router --models-max 1 = one preset at a time."
+    )
+    mid = config.get("model")
+    if not mid:
+        return
+    loaded = model_loaded_on_router(mid)
+    if loaded is None:
+        print(f"Warning: could not query {base}/models — continuing, but load may fail at runtime.")
+        return
+    if not loaded:
+        sys.exit(
+            f"Model '{mid}' is not loaded on the router.\n"
+            f"  Load it first, then re-run:\n"
+            f"    curl -sS {base}/models/load -H 'Content-Type: application/json' "
+            f"-d '{{\"model\":\"{mid}\"}}'\n"
+            f"  Or in Pi: /llama load → select {mid}"
+        )
+    print(f"Preflight: {mid} is loaded on router")
 
 
 # ----------------------------------------------------------------------------
@@ -224,6 +325,9 @@ def cmd_run(args):
     if args.config not in CONFIGS:
         sys.exit(f"unknown config '{args.config}'. valid: {', '.join(CONFIGS)}")
     config = CONFIGS[args.config]
+    # Fail fast before cloning sandboxes / burning wall-clock on a down router.
+    if config.get("provider") == "llama.cpp":
+        preflight_router(config)
     langs = args.langs.split(",")
     exercises = []
     for lang in langs:
