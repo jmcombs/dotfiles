@@ -20,5 +20,7 @@
   "enabledPlugins": {
     "context7@claude-plugins-official": true
   },
-  "theme": "auto"
+  "theme": "auto",
+  "agentPushNotifEnabled": true,
+  "model": "opus[1m]"
 }

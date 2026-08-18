@@ -30,9 +30,16 @@ window-padding-balance = true
 window-width = 140
 window-height = 40
 
+# Translucency (macOS 26 Tahoe Liquid Glass)
+# On Tahoe, background-blur = true is skipped; use the macos-glass-* modes.
+# With glass, background-opacity is a TINT: lower = more glass, 0 = pure clear glass.
+background-blur = macos-glass-regular
+background-opacity = 0.75
+
 # ====================
 # macOS-specific
 # ====================
-macos-titlebar-style = tabs
+# transparent = titlebar blends into the window bg so the glass shows through it
+# (tabs = solid themed titlebar strip; swap back if you prefer that)
+macos-titlebar-style = transparent
 macos-option-as-alt = true
-
