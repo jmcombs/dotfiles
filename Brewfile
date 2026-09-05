@@ -22,6 +22,7 @@ brew "gh"                           # GitHub CLI for managing issues, PRs, and r
 brew "git-lfs"                      # Git extension for versioning large files
 brew "neovim"                       # Terminal-based extensible text editor
 brew "llama.cpp"                    # Local LLM inference server (llama-server)
+brew "macmon"                       # Apple Silicon metrics (Steward host gauges)
 brew "tree-sitter-cli"              # CLI tool required by nvim-treesitter v1.0 to compile parsers
 
 # Shell & Terminal

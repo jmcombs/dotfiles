@@ -10,8 +10,7 @@ only when the router is up AND that preset's /models status is loaded.
 
 Multi-model H2H limitation: the router is configured with --models-max 1, so
 only one preset can be loaded at a time. Head-to-head quality compares need
-either sequential load/unload (swap) between models, raising --models-max, or
-the legacy dual dedicated servers on :1143x (Phase 5 retires those).
+sequential load/unload (swap) between models, or raising --models-max.
 
 Usage:
   llama-bench                          run all *loaded* router presets
@@ -286,47 +285,47 @@ def human_tokens(n) -> str:
     return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
 
 
-LAUNCHAGENT_DIRS = [
-    Path.home() / "Library" / "LaunchAgents",
-    Path.home() / ".dotfiles" / "llama" / "Library" / "LaunchAgents",
-]
+MODELS_INI = Path.home() / ".local" / "share" / "llama" / "models.ini"
 
 
-def parse_launch_args(args: list) -> dict:
-    """Turn a llama-server argv into {flag: value}. Flags with no following
-    value (booleans) map to True."""
-    cfg, i, n = {}, 1, len(args)  # skip argv[0] (the binary)
-    while i < n:
-        a = args[i]
-        if isinstance(a, str) and a.startswith("-"):
-            if i + 1 < n and not str(args[i + 1]).startswith("-"):
-                cfg[a] = args[i + 1]
-                i += 2
-            else:
-                cfg[a] = True
-                i += 1
-        else:
-            i += 1
+def _ini_section_to_flags(items) -> dict:
+    """Map models.ini keys (ctx-size, flash-attn, …) to {--flag: value}."""
+    cfg = {}
+    for key, value in items:
+        flag = key if str(key).startswith("-") else f"--{key}"
+        cfg[flag] = value
+    return cfg
+
+
+def read_models_ini(model_key: str) -> dict:
+    """Merge [*] defaults with the preset section for model_key's alias."""
+    import configparser
+    path = MODELS_INI
+    if not path.is_file():
+        return {}
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.optionxform = str
+    try:
+        parser.read(path, encoding="utf-8")
+    except (OSError, configparser.Error):
+        return {}
+    merged = []
+    if parser.has_section("*"):
+        merged.extend(parser.items("*"))
+    alias = MODELS.get(model_key, {}).get("alias")
+    if alias and parser.has_section(alias):
+        merged.extend(parser.items(alias))
+    cfg = _ini_section_to_flags(merged)
+    if cfg:
+        cfg["_preset"] = str(path)
     return cfg
 
 
 def read_model_config(model_key: str) -> dict:
-    """The authoritative llama.cpp config for a model: launch flags from its
-    launchd plist, augmented with build/ctx confirmed live from /props. This is
-    what makes every result self-documenting for tuning comparisons."""
-    import plistlib
-    cfg = {}
-    for d in LAUNCHAGENT_DIRS:
-        p = d / f"com.llama.{model_key}.plist"
-        if p.exists():
-            try:
-                with p.open("rb") as f:
-                    pl = plistlib.load(f)
-                cfg = parse_launch_args(pl.get("ProgramArguments", []))
-                cfg["_plist"] = str(p)
-            except Exception:
-                pass
-            break
+    """The authoritative llama.cpp config for a model: models.ini presets,
+    augmented with build/ctx confirmed live from /props. This is what makes
+    every result self-documenting for tuning comparisons."""
+    cfg = read_models_ini(model_key)
     # Live props come from the router (single process). Shape may differ by
     # llama.cpp version / whether a model is loaded — never crash on mismatch.
     try:
@@ -1116,7 +1115,7 @@ def print_baseline_scorecard(mk, report, sep):
     # ── Config: what produced these numbers (for tuning) ───────────────────
     parts = format_config_parts(cfg)
     if parts:
-        print(f"\n  CONFIG — llama.cpp launch flags (your tuning knobs)")
+        print(f"\n  CONFIG — models.ini presets (your tuning knobs)")
         line = "    "
         for p in parts:
             if len(line) + len(p) + 2 > 64:

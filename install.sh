@@ -397,22 +397,6 @@ cd -
 echo ""
 
 # ====================
-# Register llama.cpp LaunchAgents
-# ====================
-echo "Registering llama.cpp LaunchAgents..."
-for service in qwen gemma qwen32 devstral; do
-  plist="$HOME/Library/LaunchAgents/com.llama.$service.plist"
-  if [ -f "$plist" ]; then
-    launchctl unload "$plist" 2>/dev/null || true
-    launchctl load "$plist"
-    echo "  Registered com.llama.$service (will NOT auto-start at login)"
-  else
-    echo "  Warning: $plist not found — skipping (run after stow)"
-  fi
-done
-echo ""
-
-# ====================
 # Apply macOS System Preferences via macprefs
 # ====================
 MACPREFS_CONFIG="$HOME/.config/macprefs/macos-config.json"
@@ -453,9 +437,9 @@ echo ""
 	echo ""
 	echo "Your dotfiles installation is complete! Here are some optional manual steps:"
 	echo ""
-	echo "• llama.cpp: Manage local model services with llama-start/stop/status."
-	echo "  Models must be downloaded manually to ~/.local/share/llama/models/"
-	echo "  Logs: /tmp/llama-<name>.log  |  Status: llama-status"
+	echo "• llama.cpp: Put GGUF files in ~/.local/share/llama/models/"
+	echo "  Then in Pi run /steward_initialize to create the service."
+	echo "  Dashboard: /steward_dashboard"
 	echo ""
 	echo "• pi: Launch pi once to auto-install all packages (pi-tavily-search,"
 	echo "  pi-prompt-enhancer, blue-psl-10k theme, pi-subagents, pi-intercom)."

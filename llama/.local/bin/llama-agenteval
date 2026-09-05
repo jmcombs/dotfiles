@@ -120,7 +120,7 @@ def preflight_router(config: dict) -> None:
     if not router_up():
         sys.exit(
             f"llama.cpp router is not reachable at {base}.\n"
-            f"  Start it:  llama-start router\n"
+            f"  Start it from Pi: /steward_dashboard (Start)\n"
             f"  Then load: Pi /llama load  OR  "
             f"curl -sS {base}/models/load -H 'Content-Type: application/json' "
             f"-d '{{\"model\":\"{config['model']}\"}}'"
