@@ -4,3 +4,4 @@
 ^README\.md$
 ^\.github$
 ^\.gitignore$
+\.DS_Store$
