@@ -1,5 +1,8 @@
 # Global git ignore (core.excludesFile default: ~/.config/git/ignore)
 
+# macOS Finder metadata
+.DS_Store
+
 # Editor / tool local settings
 **/.claude/settings.local.json
 
