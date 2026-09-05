@@ -1,10 +1,31 @@
-# Global git ignore (core.excludesFile default: ~/.config/git/ignore)
+# Global git ignore (Git default: ~/.config/git/ignore)
+# OS / editor / agent junk that should never land in any repo.
 
-# Editor / tool local settings
+# --- macOS (github/gitignore Global/macOS.gitignore, user-machine subset)
+.DS_Store
+.localized
+__MACOSX/
+.AppleDouble
+.LSOverride
+._*
+
+# --- Vim / Neovim (github/gitignore Global/Vim.gitignore)
+# Swap patterns can match *.svg — keep the un-ignore.
+[._]*.s[a-v][a-z]
+!*.svg
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+.netrwhist
+*~
+[._]*.un~
+
+# --- Editor / tool local settings
 **/.claude/settings.local.json
+**/.claude/.cc-writes/
 
-# pi agent-harness output — never belongs in any project repo
+# --- pi agent-harness output — never belongs in any project repo
 .pi-subagents/
 .pi/
-
-**/.claude/.cc-writes/

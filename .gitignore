@@ -1,8 +1,19 @@
-# Ignore local caches and downloaded theme files
+# This repo: stow packages, installer caches, generated copies.
+
+# Installer / theme download cache
 .cache/
 
 # Local theme files copied into stow-managed config directories
 ghostty/.config/ghostty/themes/
 posh/.config/oh-my-posh/themes/
-llama/.local/bin/__pycache__/
-benchmarks/**/__pycache__/
+
+# Python bytecode from llama eval CLIs and benchmarks
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node (eval tooling)
+node_modules/
