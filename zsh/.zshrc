@@ -46,6 +46,12 @@ if [ -f "$HOME/.config/op/plugins.sh" ]; then
   source $HOME/.config/op/plugins.sh
 fi
 
+# Secrets from 1Password (skip if already set so nested shells don't re-prompt)
+if [[ -z "${SKILLCHECK_LICENSE:-}" ]] && command -v op >/dev/null 2>&1; then
+  SKILLCHECK_LICENSE="$(op read 'op://Netservant Lab/SkillCheck Pro/license key' 2>/dev/null)" || true
+  export SKILLCHECK_LICENSE
+fi
+
 # ====================
 # Prompt: Oh My Posh with Blue PSL 10K theme
 # ====================
