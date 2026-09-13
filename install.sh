@@ -347,6 +347,18 @@ cd -
 echo ""
 
 # ====================
+# Install house-skills (pi / Cursor / Claude Code skill pointers)
+# ====================
+echo "Installing house-skills..."
+if [ -x "$HOME/Projects/house-skills/scripts/install.sh" ]; then
+  bash "$HOME/Projects/house-skills/scripts/install.sh"
+else
+  echo "Warning: house-skills installer not found at $HOME/Projects/house-skills/scripts/install.sh; skipping."
+fi
+
+echo ""
+
+# ====================
 # Apply macOS System Preferences via macprefs
 # ====================
 MACPREFS_CONFIG="$HOME/.config/macprefs/macos-config.json"
