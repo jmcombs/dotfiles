@@ -12,7 +12,7 @@ from pathlib import Path
 BASE = Path("/private/tmp/claude-501/-Users-jmcombs--dotfiles/"
             "696ef4f6-557a-42b6-b92f-6df58a9f637c/scratchpad/ts-phase-bench")
 SAND = BASE / "_ab"
-VERIFIER_MD = Path("/Users/jmcombs/.dotfiles/pi/.pi/agent/agents/verifier.md")
+VERIFIER_MD = Path.home() / ".pi/agent/agents/verifier.md"
 ORCH = ("llama-gptoss", "gpt-oss-20b", "low")
 TIMEOUT = 600
 

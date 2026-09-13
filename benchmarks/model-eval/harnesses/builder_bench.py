@@ -16,7 +16,7 @@ from pathlib import Path
 BASE = Path("/private/tmp/claude-501/-Users-jmcombs--dotfiles/"
             "696ef4f6-557a-42b6-b92f-6df58a9f637c/scratchpad/ts-phase-bench")
 SAND = BASE / "_builder"
-BUILDER_MD = Path("/Users/jmcombs/.dotfiles/pi/.pi/agent/agents/builder.md")
+BUILDER_MD = Path.home() / ".pi/agent/agents/builder.md"
 ORCH = ("llama-gptoss", "gpt-oss-20b", "low")
 FIXTURES = ["roman", "lru", "bowling"]
 TIMEOUT = 1200
