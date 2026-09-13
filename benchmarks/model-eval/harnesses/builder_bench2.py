@@ -20,7 +20,7 @@ BASE = Path("/private/tmp/claude-501/-Users-jmcombs--dotfiles/"
             "696ef4f6-557a-42b6-b92f-6df58a9f637c/scratchpad/ts-phase-bench")
 SAND = BASE / "_builder2"
 RESULTS = BASE / "_builder2_results.json"
-BUILDER_MD = Path("/Users/jmcombs/.dotfiles/pi/.pi/agent/agents/builder.md")
+BUILDER_MD = Path.home() / ".pi/agent/agents/builder.md"
 ORCH_PROMPT = Path.home()/".pi/agent/prompts/orchestrator-phase-loop.md"
 MODELS_DIR = Path("/Users/jmcombs/.local/share/llama/models")
 LLAMA = "/opt/homebrew/bin/llama-server"

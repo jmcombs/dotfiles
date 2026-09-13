@@ -185,22 +185,6 @@ echo "Configuring Git LFS..."
 git lfs install
 
 # ====================
-# Authenticate with GitHub (session-only — removed after submodule clone)
-# ====================
-echo "Checking GitHub authentication..."
-if ! gh auth status &>/dev/null; then
-  echo "GitHub sign-in required to clone private pi-agents repository."
-  echo "(Session-only — token is removed after cloning.)"
-  gh auth login
-  gh auth setup-git
-  GH_AUTH_TEMP=true
-else
-  echo "GitHub already authenticated."
-  GH_AUTH_TEMP=false
-fi
-echo ""
-
-# ====================
 # Install pi coding agent
 # ====================
 echo "Installing pi coding agent..."
@@ -228,34 +212,6 @@ if command -v claude &>/dev/null; then
   echo "Claude Code CLI already installed ($(claude --version 2>/dev/null || echo 'version unknown')). Skipping."
 else
   curl -fsSL https://claude.ai/install.sh | bash
-fi
-echo ""
-
-# ====================
-# Initialize pi-agents submodule
-# ====================
-echo "Initializing pi-agents submodule..."
-if git -C "$DOTFILES_DIR" submodule update --init --recursive; then
-  echo "pi-agents submodule initialized."
-  PI_AGENTS_READY=true
-
-  # Register the settings.json clean filter so lastChangelogVersion (auto-written
-  # by pi on every run) is stripped before staging and never causes a dirty tree.
-  git -C "$DOTFILES_DIR/pi/.pi/agent" config filter.filter_json_keys.clean 'bash scripts/clean-settings-json.sh'
-  git -C "$DOTFILES_DIR/pi/.pi/agent" config filter.filter_json_keys.smudge cat
-  echo "  Registered settings.json clean filter."
-else
-  echo "Warning: pi-agents submodule initialization failed."
-  echo "  Run manually after authenticating:"
-  echo "    git -C $DOTFILES_DIR submodule update --init --recursive"
-  echo "    stow -d $DOTFILES_DIR -t $HOME pi"
-  PI_AGENTS_READY=false
-fi
-
-# Remove temporary GitHub authentication now that submodule is cloned
-if [ "$GH_AUTH_TEMP" = "true" ]; then
-  gh auth logout --hostname github.com 2>/dev/null || true
-  echo "Temporary GitHub authentication removed."
 fi
 echo ""
 
@@ -385,13 +341,7 @@ backup_config "$HOME/.gitconfig"
 backup_config "$HOME/.claude/settings.json"
 backup_config "$HOME/.claude/statusline-command.sh"
 
-if [ "$PI_AGENTS_READY" = "true" ]; then
-  backup_config "$HOME/.pi/agent/settings.json"
-  backup_config "$HOME/.pi/agent/models.json"
-  stow zsh git ghostty macprefs nvim llama pi claude
-else
-  stow zsh git ghostty macprefs nvim llama claude
-fi
+stow zsh git ghostty macprefs nvim llama claude
 cd -
 
 echo ""
@@ -444,13 +394,6 @@ echo ""
 	echo "• pi: Launch pi once to auto-install all packages (pi-tavily-search,"
 	echo "  pi-prompt-enhancer, blue-psl-10k theme, pi-subagents, pi-intercom)."
 	echo "  No manual pi install commands needed."
-	echo ""
-	echo "• pi-agents (if submodule was skipped): authenticate with GitHub then run:"
-	echo "    git -C ~/.dotfiles submodule update --init --recursive"
-	echo "    stow -d ~/.dotfiles -t ~ pi"
-	echo "  Then launch pi — packages install automatically on first run."
-	echo ""
-	echo "• To sync pi-agents changes going forward: ask pi to 'sync my pi config'"
 	echo ""
 	echo "• Claude Code CLI: Run 'claude' in any project directory to authenticate"
 	echo "  (Requires a Claude Pro/Max subscription or Anthropic Console account)"
