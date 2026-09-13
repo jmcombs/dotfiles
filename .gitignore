@@ -8,6 +8,8 @@ ghostty/.config/ghostty/themes/
 posh/.config/oh-my-posh/themes/
 
 # Python bytecode from llama eval CLIs and benchmarks
+.venv/
+*.egg-info/
 __pycache__/
 *.py[cod]
 *$py.class
