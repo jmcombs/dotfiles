@@ -79,3 +79,8 @@ export PATH="$HOME/.grok/bin:$PATH"
 fpath=(~/.grok/completions/zsh $fpath)
 autoload -Uz compinit && compinit -C
 # <<< grok installer <<<
+
+# Cursor CLI also ships `agent` in ~/.local/bin. Grok's installer prepends
+# ~/.grok/bin and would otherwise shadow it. Restore user binaries first so
+# `agent` launches Cursor; Grok remains available as `grok`.
+export PATH="$HOME/.local/bin:$PATH"
