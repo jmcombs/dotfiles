@@ -46,11 +46,14 @@ if [ -f "$HOME/.config/op/plugins.sh" ]; then
   source $HOME/.config/op/plugins.sh
 fi
 
-# Secrets from 1Password (skip if already set so nested shells don't re-prompt)
-if [[ -z "${SKILLCHECK_LICENSE:-}" ]] && command -v op >/dev/null 2>&1; then
-  SKILLCHECK_LICENSE="$(op read 'op://Netservant Lab/SkillCheck Pro/license key' 2>/dev/null)" || true
-  export SKILLCHECK_LICENSE
-fi
+# SkillCheck license from 1Password only when the CLI runs (not at shell start)
+skillcheck() {
+  if [[ -z "${SKILLCHECK_LICENSE:-}" ]] && command -v op >/dev/null 2>&1; then
+    SKILLCHECK_LICENSE="$(op read 'op://Netservant Lab/SkillCheck Pro/license key')" || return 1
+    export SKILLCHECK_LICENSE
+  fi
+  command skillcheck "$@"
+}
 
 # ====================
 # Prompt: Oh My Posh with Blue PSL 10K theme
@@ -79,3 +82,8 @@ export PATH="$HOME/.grok/bin:$PATH"
 fpath=(~/.grok/completions/zsh $fpath)
 autoload -Uz compinit && compinit -C
 # <<< grok installer <<<
+
+# Cursor CLI also ships `agent` in ~/.local/bin. Grok's installer prepends
+# ~/.grok/bin and would otherwise shadow it. Restore user binaries first so
+# `agent` launches Cursor; Grok remains available as `grok`.
+export PATH="$HOME/.local/bin:$PATH"
